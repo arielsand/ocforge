@@ -1,20 +1,38 @@
 {
   "name": "ocforge",
   "version": "0.1.0",
-  "description": "OpenCode Agent & Model Configurator",
+  "description": "OpenCode Agent & Model Configurator — reconfigure AI models/providers across OpenCode and Oh My OpenAgent",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "ocforge": "./src/cli.ts"
+    "ocforge": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "src/web/ui/"
+  ],
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "bun build src/cli.ts --outdir dist --target bun",
+    "dev:tui": "bun run src/cli.ts --tui",
+    "dev:web": "bun run src/cli.ts --web",
+    "build": "bun run build:bundle && bun run build:web",
+    "build:bundle": "bun build src/cli.ts --outdir dist --target bun",
+    "build:bin": "bun build src/cli.ts --compile --outfile dist/ocforge",
     "build:web": "vite build --config vite.web.config.ts",
-    "dev:web": "vite --config vite.web.config.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
+  "keywords": [
+    "opencode",
+    "ai",
+    "model-config",
+    "agent-config",
+    "ollama",
+    "tui",
+    "terminal"
+  ],
+  "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^0.10.0",
     "commander": "^13.0.0",
@@ -22,7 +40,8 @@
     "ink": "^7.0.1",
     "jsonc-parser": "^3.3.0",
     "react": "^19.2.5",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
@@ -30,6 +49,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.4.0",
     "bun-types": "^1.3.13",
+    "react-devtools-core": "^7.0.1",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   },

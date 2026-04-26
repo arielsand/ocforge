@@ -20,6 +20,12 @@ interface OllamaModelView {
   parameter_size?: string;
 }
 
+interface SnapshotView {
+  name: string;
+  createdAt: string;
+  description?: string;
+}
+
 interface PendingChange {
   filePath: string;
   jsonPath: (string | number)[];
@@ -54,19 +60,38 @@ export default function App() {
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('');
   const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
 
+  // Snapshot state
+  const [snapshots, setSnapshots] = useState<SnapshotView[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [snapshotDesc, setSnapshotDesc] = useState('');
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+
   const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
   const [suggestionResult, setSuggestionResult] = useState<Record<string, SuggestionResponse['suggestion']>>({});
   const [suggestionRaw, setSuggestionRaw] = useState<Record<string, string>>({});
+
+  const refreshSnapshots = async () => {
+    try {
+      const res = await fetch('/api/snapshots');
+      const data = await res.json();
+      setSnapshots(data.snapshots || []);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     Promise.all([
       fetch('/api/configs').then((r) => r.json()),
       fetch('/api/models').then((r) => r.json()),
       fetch('/api/ollama/models').then((r) => r.json()),
+      fetch('/api/snapshots').then((r) => r.json()),
     ])
-      .then(([cfgData, modelData, ollamaData]) => {
+      .then(([cfgData, modelData, ollamaData, snapData]) => {
         setConfigs(cfgData);
         setModels(modelData);
+        setSnapshots(snapData.snapshots || []);
         setOllamaAvailable(ollamaData.available);
         if (ollamaData.available) {
           setOllamaModels(ollamaData.models);
@@ -148,6 +173,59 @@ export default function App() {
     }
   };
 
+  const saveSnapshot = async () => {
+    if (!snapshotName.trim()) return;
+    setSnapshotLoading(true);
+    try {
+      const res = await fetch('/api/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: snapshotName.trim(), description: snapshotDesc.trim() || undefined }),
+      });
+      if (res.ok) {
+        setSnapshotName('');
+        setSnapshotDesc('');
+        setShowSaveModal(false);
+        await refreshSnapshots();
+      } else {
+        const text = await res.text();
+        setError(`Save failed: ${text}`);
+      }
+    } catch (err) {
+      setError(`Save failed: ${err}`);
+    } finally {
+      setSnapshotLoading(false);
+    }
+  };
+
+  const loadSnapshot = async (name: string) => {
+    if (!confirm(`Load snapshot "${name}"? This will overwrite your current config files.`)) return;
+    try {
+      const res = await fetch(`/api/snapshots/${encodeURIComponent(name)}/load`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setApplied(true);
+        setTimeout(() => setApplied(false), 3000);
+        const refreshed = await fetch('/api/configs').then((r) => r.json());
+        setConfigs(refreshed);
+      } else {
+        setError(`Load failed: ${data.error}`);
+      }
+    } catch (err) {
+      setError(`Load failed: ${err}`);
+    }
+  };
+
+  const deleteSnapshot = async (name: string) => {
+    if (!confirm(`Delete snapshot "${name}"?`)) return;
+    try {
+      await fetch(`/api/snapshots/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      await refreshSnapshots();
+    } catch (err) {
+      setError(`Delete failed: ${err}`);
+    }
+  };
+
   const aiSuggest = async (agentName: string, filePath: string, currentModel: string) => {
     if (!selectedOllamaModel) {
       setError('Please select an Ollama model first');
@@ -194,6 +272,96 @@ export default function App() {
   return (
     <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', maxWidth: 1000, margin: '0 auto' }}>
       <h1>🔧 ocforge</h1>
+
+      {/* Snapshots */}
+      <div style={{ marginBottom: 24, padding: 16, background: '#fff3e0', borderRadius: 8, border: '1px solid #ffe0b2' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>💾 Snapshots</h3>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            style={{ padding: '6px 14px', fontSize: 13, cursor: 'pointer', background: '#ff9800', color: 'white', border: 'none', borderRadius: 4 }}
+          >
+            Save Snapshot
+          </button>
+        </div>
+
+        {snapshots.length === 0 && (
+          <div style={{ fontSize: 13, color: '#666', fontStyle: 'italic' }}>No snapshots saved yet</div>
+        )}
+
+        {snapshots.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {snapshots.map((s) => (
+              <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'white', borderRadius: 4, border: '1px solid #eee' }}>
+                <div>
+                  <strong style={{ fontSize: 14 }}>{s.name}</strong>
+                  {s.description && <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>{s.description}</span>}
+                  <div style={{ fontSize: 11, color: '#999' }}>{new Date(s.createdAt).toLocaleString()}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => loadSnapshot(s.name)}
+                    style={{ padding: '4px 10px', fontSize: 12, cursor: 'pointer', background: '#4caf50', color: 'white', border: 'none', borderRadius: 3 }}
+                  >
+                    Load
+                  </button>
+                  <button
+                    onClick={() => deleteSnapshot(s.name)}
+                    style={{ padding: '4px 10px', fontSize: 12, cursor: 'pointer', background: '#f44336', color: 'white', border: 'none', borderRadius: 3 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Save Snapshot Modal */}
+      {showSaveModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: 24, borderRadius: 8, width: 400, maxWidth: '90%' }}>
+            <h3 style={{ marginTop: 0 }}>Save Snapshot</h3>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Name:</label>
+              <input
+                type="text"
+                value={snapshotName}
+                onChange={(e) => setSnapshotName(e.target.value)}
+                placeholder="e.g. My OpenCode Setup"
+                style={{ width: '100%', padding: 8, fontSize: 14, boxSizing: 'border-box' }}
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Description (optional):</label>
+              <input
+                type="text"
+                value={snapshotDesc}
+                onChange={(e) => setSnapshotDesc(e.target.value)}
+                placeholder="e.g. Before switching to Claude"
+                style={{ width: '100%', padding: 8, fontSize: 14, boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer', background: '#eee', border: 'none', borderRadius: 4 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSnapshot}
+                disabled={!snapshotName.trim() || snapshotLoading}
+                style={{ padding: '8px 16px', fontSize: 14, cursor: snapshotLoading ? 'wait' : 'pointer', background: '#ff9800', color: 'white', border: 'none', borderRadius: 4 }}
+              >
+                {snapshotLoading ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ollama Model Selector */}
       <div style={{ marginBottom: 24, padding: 16, background: '#f0e6ff', borderRadius: 8, border: '1px solid #d4b8ff' }}>

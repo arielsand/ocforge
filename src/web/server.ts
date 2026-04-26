@@ -1,12 +1,13 @@
 import Fastify from 'fastify';
 import { join } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { discoverConfigs } from '../core/config-loader';
 import { ModelRegistry } from '../core/model-registry';
 import { SuggestionEngine } from '../core/suggestion-engine';
 import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
 import { listOllamaModels, generateWithOllama, buildSuggestionPrompt } from '../core/ollama-client';
+import { listSnapshots, saveSnapshot, loadSnapshot, deleteSnapshot } from '../core/snapshot-manager';
 import type { Change } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
@@ -126,6 +127,41 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
         raw: null,
       };
     }
+  });
+
+  // Snapshots
+  app.get('/api/snapshots', async () => {
+    return { snapshots: listSnapshots() };
+  });
+
+  app.post('/api/snapshots', async (request) => {
+    const { name, description } = request.body as { name: string; description?: string };
+    const configs = discoverConfigs(cwd);
+    const snapshotConfigs = [...configs.opencode, ...configs.omo].map((c) => ({
+      path: c.path,
+      type: c.type,
+      content: c.content,
+    }));
+    const snapshot = saveSnapshot(name, snapshotConfigs, description);
+    return { success: true, snapshot };
+  });
+
+  app.post('/api/snapshots/:name/load', async (request) => {
+    const { name } = request.params as { name: string };
+    const snapshot = loadSnapshot(name);
+    if (!snapshot) {
+      return { success: false, error: `Snapshot '${name}' not found` };
+    }
+    for (const cfg of snapshot.configs) {
+      writeFileSync(cfg.path, cfg.content, 'utf-8');
+    }
+    return { success: true, restored: snapshot.configs.map((c) => c.path) };
+  });
+
+  app.delete('/api/snapshots/:name', async (request) => {
+    const { name } = request.params as { name: string };
+    const deleted = deleteSnapshot(name);
+    return { success: deleted };
   });
 
   app.post('/api/apply', async (request) => {

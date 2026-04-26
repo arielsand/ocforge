@@ -44,7 +44,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     const configs = discoverConfigs(cwd);
     const models = await getModels();
     const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
-    (registry as any).models = models; // seed cached models
+    registry.seed(models);
     const engine = new SuggestionEngine(registry);
     return engine.generate(configs);
   });
@@ -63,7 +63,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     const configs = discoverConfigs(cwd);
     const models = await getModels();
     const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
-    (registry as any).models = models;
+    registry.seed(models);
     const engine = new SuggestionEngine(registry);
 
     // Build a focused config with just this agent

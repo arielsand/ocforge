@@ -245,31 +245,32 @@ export default function App() {
     const oc = configs.opencode[0];
 
     if (activePanel === 'agents' && omo) {
-      const agents = Object.entries(omo.data.agents ?? {});
+      const agents = Object.entries(omo.data.agents ?? {}) as [string, { model?: string }][];
       const [name, cfg] = agents[state.selectedAgent] || [];
       if (!name) return;
       setState((s) => ({
         ...s,
         showModelPicker: true,
-        pickerTarget: { type: 'agent', name, filePath: omo.path, currentValue: (cfg as any)?.model || '' },
+        pickerTarget: { type: 'agent', name, filePath: omo.path, currentValue: cfg?.model || '' },
       }));
       setPickerSelected(0);
     } else if (activePanel === 'categories' && omo) {
-      const cats = Object.entries(omo.data.categories ?? {});
+      const cats = Object.entries(omo.data.categories ?? {}) as [string, { model?: string }][];
       const [name, cfg] = cats[state.selectedCategory] || [];
       if (!name) return;
       setState((s) => ({
         ...s,
         showModelPicker: true,
-        pickerTarget: { type: 'category', name, filePath: omo.path, currentValue: (cfg as any)?.model || '' },
+        pickerTarget: { type: 'category', name, filePath: omo.path, currentValue: cfg?.model || '' },
       }));
       setPickerSelected(0);
     } else if (activePanel === 'opencode' && oc) {
       const field = OPENCODE_FIELDS[state.selectedOpencodeField];
+      const ocData = oc.data as Record<string, string>;
       setState((s) => ({
         ...s,
         showModelPicker: true,
-        pickerTarget: { type: field === 'model' ? 'opencode-model' : 'opencode-small-model', name: field, filePath: oc.path, currentValue: (oc.data as any)[field] || '' },
+        pickerTarget: { type: field === 'model' ? 'opencode-model' : 'opencode-small-model', name: field, filePath: oc.path, currentValue: ocData[field] || '' },
       }));
       setPickerSelected(0);
     }
@@ -346,11 +347,11 @@ export default function App() {
     let agentName: string;
     let currentModel: string;
     if (activePanel === 'agents') {
-      const agents = Object.entries(omo.data.agents ?? {});
+      const agents = Object.entries(omo.data.agents ?? {}) as [string, { model?: string }][];
       const [name, cfg] = agents[state.selectedAgent] || [];
       if (!name) return;
       agentName = name;
-      currentModel = (cfg as any)?.model || '';
+      currentModel = cfg?.model || '';
     } else {
       setState((s) => ({
         ...s,
@@ -415,7 +416,7 @@ export default function App() {
   );
 
   const renderAgentsPanel = () => {
-    const agents = Object.entries(state.configs.omo[0]?.data.agents ?? {});
+    const agents = Object.entries(state.configs.omo[0]?.data.agents ?? {}) as [string, { model?: string; fallback_models?: unknown[] }][];
     const focused = state.activePanel === 'agents';
     const panelColor = focused ? '#e91e63' : '#333';
 
@@ -426,7 +427,7 @@ export default function App() {
           {focused && <Text color="#666"> ← active</Text>}
         </Box>
         <Box flexDirection="column" paddingX={1}>
-          {agents.map(([name, cfg]: [string, any], idx) => {
+          {agents.map(([name, cfg], idx) => {
             const isSelected = focused && idx === state.selectedAgent;
             const role = getAgentRoleDescription(name);
             const model = cfg?.model || 'none';
@@ -465,7 +466,7 @@ export default function App() {
   };
 
   const renderCategoriesPanel = () => {
-    const cats = Object.entries(state.configs.omo[0]?.data.categories ?? {});
+    const cats = Object.entries(state.configs.omo[0]?.data.categories ?? {}) as [string, { model?: string }][];
     const focused = state.activePanel === 'categories';
     const panelColor = focused ? '#9c27b0' : '#333';
 
@@ -476,7 +477,7 @@ export default function App() {
           {focused && <Text color="#666"> ← active</Text>}
         </Box>
         <Box flexDirection="column" paddingX={1}>
-          {cats.map(([name, cfg]: [string, any], idx) => {
+          {cats.map(([name, cfg], idx) => {
             const isSelected = focused && idx === state.selectedCategory;
             const model = cfg?.model || 'none';
             const provider = model.split('/')[0] || '';
@@ -512,7 +513,7 @@ export default function App() {
     const oc = state.configs.opencode[0];
     const focused = state.activePanel === 'opencode';
     const panelColor = focused ? '#00bcd4' : '#333';
-    const ocData = oc?.data as Record<string, any> | undefined;
+    const ocData = oc?.data as Record<string, string> | undefined;
 
     return (
       <Box flexDirection="column" width="28%" borderStyle="single" borderColor={panelColor}>

@@ -1,4 +1,4 @@
-import type { ModelInfo, ConfigState, Suggestion, OmOConfig, AgentConfig, CategoryConfig } from '../types';
+import type { ModelInfo, ConfigState, Suggestion, OmOConfig, OpenCodeConfig } from '../types';
 import { ModelRegistry } from './model-registry';
 
 interface AgentRole {
@@ -42,7 +42,7 @@ export class SuggestionEngine {
     const models = this.registry.list();
 
     if (configs.opencode.length > 0) {
-      const ocData = configs.opencode[0].data as import('../types').OpenCodeConfig;
+      const ocData = configs.opencode[0].data as OpenCodeConfig;
       if (ocData.model) {
         const best = this.pickBestModel(ocData.model, models, 'orchestrator', ['opus', 'sonnet', 'standard']);
         if (best && best.id !== ocData.model) {
@@ -74,12 +74,10 @@ export class SuggestionEngine {
     if (configs.omo.length > 0) {
       const omo = configs.omo[0];
       const omoData = omo.data as OmOConfig;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const agents = (omoData.agents ?? {}) as Record<string, any>;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const categories = (omoData.categories ?? {}) as Record<string, any>;
+      const agents = omoData.agents ?? {};
+      const categories = omoData.categories ?? {};
       for (const [name, cfg] of Object.entries(agents)) {
-        const currentModel = cfg.model as string | undefined;
+        const currentModel = (cfg as { model?: string }).model;
         if (!currentModel) continue;
         const role = AGENT_ROLES[name] ?? { capabilityNeed: 'general', preferredTier: ['standard', 'sonnet', 'mini'] };
         const best = this.pickBestModel(currentModel, models, role.capabilityNeed, role.preferredTier);
@@ -96,7 +94,7 @@ export class SuggestionEngine {
       }
 
       for (const [name, cfg] of Object.entries(categories)) {
-        const currentModel = cfg.model as string | undefined;
+        const currentModel = (cfg as { model?: string }).model;
         if (!currentModel) continue;
         const role = CATEGORY_ROLES[name] ?? { capabilityNeed: 'general', preferredTier: ['standard', 'sonnet', 'mini'] };
         const best = this.pickBestModel(currentModel, models, role.capabilityNeed, role.preferredTier);

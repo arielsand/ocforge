@@ -130,4 +130,8 @@ export class ModelRegistry {
   getProviders(): string[] {
     return [...new Set(this.models.map((m) => m.provider))];
   }
+
+  seed(models: ModelInfo[]): void {
+    this.models = models;
+  }
 }

@@ -22,11 +22,27 @@ Reconfigure AI models and providers across OpenCode and Oh My OpenAgent configs 
 
 ## Install
 
+### From npm (when published)
+
 ```bash
 bun add -g ocforge
 ```
 
-Requires [Bun](https://bun.sh) ≥ 1.3 and `opencode` CLI in PATH.
+### From source
+
+```bash
+git clone https://github.com/arielsand/ocforge.git
+cd ocforge
+bun install
+bun run build
+bun link --global   # makes 'ocforge' available globally
+```
+
+### Requirements
+
+- [Bun](https://bun.sh) ≥ 1.3
+- `opencode` CLI in PATH (for model discovery)
+- Optional: [Ollama](https://ollama.com) for AI-powered suggestions
 
 ## Usage
 
@@ -36,6 +52,18 @@ ocforge --tui           # Rich dashboard TUI (3-pane layout)
 ocforge --web           # Web UI at http://localhost:3456
 ocforge --dry-run       # Show diff without writing
 ```
+
+### OpenCode Plugin
+
+Add ocforge as a plugin in your `opencode.json`:
+
+```json
+{
+  "plugin": ["ocforge"]
+}
+```
+
+Then run `/config-models` inside OpenCode to launch the TUI.
 
 ### Profiles
 
@@ -59,7 +87,24 @@ Full config state backup and restore (via Web UI or TUI):
 - Save snapshot of all configs
 - Restore snapshot (with verification)
 
-## Architecture
+### AI Suggestions
+
+Install [Ollama](https://ollama.com) locally, pull a model (e.g. `ollama pull gemma3:4b`), and click **AI** on any agent or category. Ollama will suggest the best model based on the agent's role and available models.
+
+## Development
+
+```bash
+git clone https://github.com/arielsand/ocforge.git
+cd ocforge
+bun install           # install dependencies
+bun test              # run tests (42 tests)
+bun run typecheck     # type-check with tsc
+bun run dev           # run CLI in dev mode
+bun run build         # build for production
+bun run build:web     # build web UI
+```
+
+### Project Structure
 
 ```
 src/
@@ -70,7 +115,7 @@ src/
 │   ├── config-loader.ts  # Discover + parse JSONC configs
 │   ├── model-registry.ts # Query opencode models, infer capabilities
 │   ├── suggestion-engine.ts # Role-based model scoring
-│   ├── jsonc-writer.ts   # AST-aware JSONC edits + backups
+│   ├── jsonc-writer.ts   # AST-aware JSONC edits + backups + verification
 │   ├── diff-preview.ts   # Human-readable change summaries
 │   ├── reload-signaler.ts # Post-write reload signal
 │   ├── version-detector.ts # OmO version detection + bug awareness
@@ -82,6 +127,11 @@ src/
 └── web/
     ├── server.ts         # Fastify REST API
     └── ui/               # React + Vite frontend
+
+tests/
+├── core/                 # Unit tests per core module
+├── integration.test.ts   # End-to-end pipeline test
+└── fixtures/             # Sample JSONC configs
 ```
 
 | Module | Responsibility |
@@ -99,18 +149,12 @@ src/
 
 ### Config Precedence
 
-Files are discovered in this order (later wins):
+Files are discovered in this order (later wins per level):
 
 1. `~/.config/opencode/opencode.json`
 2. `./opencode.json` (project level)
-3. `~/.config/opencode/oh-my-openagent.jsonc` (or legacy `oh-my-opencode.jsonc`)
-4. `./.opencode/oh-my-openagent.jsonc` (or legacy)
-
-## Testing
-
-```bash
-bun test    # 42 tests passing (unit + integration)
-```
+3. `~/.config/opencode/oh-my-opencode.*` → `oh-my-openagent.*` (legacy wins over new per level)
+4. `./.opencode/oh-my-opencode.*` → `oh-my-openagent.*` (project level, legacy wins)
 
 ## Known Issues
 
@@ -120,4 +164,4 @@ bun test    # 42 tests passing (unit + integration)
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -13,6 +13,13 @@ interface ModelView {
   priceTier: string;
 }
 
+interface OllamaModelView {
+  name: string;
+  model: string;
+  size: number;
+  parameter_size?: string;
+}
+
 interface PendingChange {
   filePath: string;
   jsonPath: (string | number)[];
@@ -29,6 +36,7 @@ interface SuggestionResponse {
     reason: string;
     confidence: number;
   } | null;
+  raw?: string;
   error?: string;
 }
 
@@ -40,22 +48,33 @@ export default function App() {
   const [pending, setPending] = useState<PendingChange[]>([]);
   const [applied, setApplied] = useState(false);
   const [hiddenProviders, setHiddenProviders] = useState<Set<string>>(new Set());
+
+  // Ollama state
+  const [ollamaModels, setOllamaModels] = useState<OllamaModelView[]>([]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>('');
+  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+
   const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
   const [suggestionResult, setSuggestionResult] = useState<Record<string, SuggestionResponse['suggestion']>>({});
+  const [suggestionRaw, setSuggestionRaw] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch('/api/configs')
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+    Promise.all([
+      fetch('/api/configs').then((r) => r.json()),
+      fetch('/api/models').then((r) => r.json()),
+      fetch('/api/ollama/models').then((r) => r.json()),
+    ])
+      .then(([cfgData, modelData, ollamaData]) => {
+        setConfigs(cfgData);
+        setModels(modelData);
+        setOllamaAvailable(ollamaData.available);
+        if (ollamaData.available) {
+          setOllamaModels(ollamaData.models);
+          if (ollamaData.models.length > 0) {
+            setSelectedOllamaModel(ollamaData.models[0].model);
+          }
+        }
       })
-      .then(setConfigs)
-      .then(() => fetch('/api/models'))
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setModels)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -129,21 +148,31 @@ export default function App() {
     }
   };
 
-  const aiSuggest = async (agentName: string, filePath: string) => {
+  const aiSuggest = async (agentName: string, filePath: string, currentModel: string) => {
+    if (!selectedOllamaModel) {
+      setError('Please select an Ollama model first');
+      return;
+    }
     setSuggestingFor(agentName);
     try {
-      const res = await fetch('/api/suggest-for-agent', {
+      const res = await fetch('/api/ollama/suggest-for-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentName, filePath }),
+        body: JSON.stringify({
+          agentName,
+          currentModel,
+          agentDescription: getAgentRoleDescription(agentName),
+          ollamaModel: selectedOllamaModel,
+        }),
       });
       const data: SuggestionResponse = await res.json();
       setSuggestionResult((prev) => ({ ...prev, [agentName]: data.suggestion }));
+      if (data.raw) setSuggestionRaw((prev) => ({ ...prev, [agentName]: data.raw! }));
       if (data.suggestion) {
-        addChange(filePath, ['agents', agentName, 'model'], data.suggestion.currentValue, data.suggestion.suggestedValue, `${agentName} model (AI suggested)`);
+        addChange(filePath, ['agents', agentName, 'model'], data.suggestion.currentValue, data.suggestion.suggestedValue, `${agentName} model (Ollama AI suggested)`);
       }
     } catch (err) {
-      setError(`Suggest failed: ${err}`);
+      setError(`Ollama suggest failed: ${err}`);
     } finally {
       setSuggestingFor(null);
     }
@@ -165,6 +194,38 @@ export default function App() {
   return (
     <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', maxWidth: 1000, margin: '0 auto' }}>
       <h1>🔧 ocforge</h1>
+
+      {/* Ollama Model Selector */}
+      <div style={{ marginBottom: 24, padding: 16, background: '#f0e6ff', borderRadius: 8, border: '1px solid #d4b8ff' }}>
+        <h3 style={{ margin: '0 0 12px 0' }}>🧠 AI Suggestion Engine</h3>
+        {ollamaAvailable === false && (
+          <div style={{ color: '#cc0000', fontSize: 14 }}>
+            ⚠️ Ollama not available at localhost:11434. Install from <a href="https://ollama.com" target="_blank" rel="noreferrer">ollama.com</a> and pull a model.
+          </div>
+        )}
+        {ollamaAvailable === true && ollamaModels.length === 0 && (
+          <div style={{ color: '#cc6600', fontSize: 14 }}>
+            ⚠️ Ollama is running but no models found. Run: <code>ollama pull llama3.2</code>
+          </div>
+        )}
+        {ollamaAvailable === true && ollamaModels.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ fontSize: 14 }}>Model for AI suggestions:</label>
+            <select
+              value={selectedOllamaModel}
+              onChange={(e) => setSelectedOllamaModel(e.target.value)}
+              style={{ padding: 6, fontSize: 14, flex: 1 }}
+            >
+              {ollamaModels.map((m) => (
+                <option key={m.model} value={m.model}>
+                  {m.name} {m.parameter_size ? `(${m.parameter_size})` : ''}
+                </option>
+              ))}
+            </select>
+            <span style={{ fontSize: 12, color: '#666' }}>{ollamaModels.length} installed</span>
+          </div>
+        )}
+      </div>
 
       {/* Provider Filter */}
       <div style={{ marginBottom: 24, padding: 16, background: '#f8f9fa', borderRadius: 8, border: '1px solid #e9ecef' }}>
@@ -201,9 +262,11 @@ export default function App() {
               modelsByProvider={modelsByProvider}
               pending={pending}
               suggestion={suggestionResult[name]}
+              suggestionRaw={suggestionRaw[name]}
               isSuggesting={suggestingFor === name}
+              ollamaReady={ollamaAvailable === true && selectedOllamaModel !== ''}
               onModelChange={(val) => addChange(c.path, ['agents', name, 'model'], cfg.model ?? '', val, `${name} model`)}
-              onAiSuggest={() => aiSuggest(name, c.path)}
+              onAiSuggest={() => aiSuggest(name, c.path, cfg.model ?? '')}
               onAddFallback={(modelId) => addFallbackChange(c.path, name, (cfg.fallback_models || []).map((f: any) => typeof f === 'string' ? f : f.model), modelId)}
               onRemoveFallback={(idx) => removeFallbackChange(c.path, name, (cfg.fallback_models || []).map((f: any) => typeof f === 'string' ? f : f.model), idx)}
             />
@@ -275,6 +338,23 @@ export default function App() {
   );
 }
 
+function getAgentRoleDescription(name: string): string {
+  const roles: Record<string, string> = {
+    sisyphus: 'Main orchestrator agent that plans and coordinates complex development tasks',
+    prometheus: 'Planner agent that creates detailed task breakdowns and strategies',
+    metis: 'Plan consultant that reviews and improves development plans',
+    momus: 'Critical reviewer that finds flaws and edge cases in plans',
+    oracle: 'Architecture expert for system design and technical decisions',
+    hephaestus: 'Builder agent focused on implementation and execution',
+    atlas: 'General-purpose development agent for coding tasks',
+    librarian: 'Documentation and codebase research specialist',
+    explore: 'Code exploration agent for navigating large codebases',
+    'multimodal-looker': 'Visual tasks specialist with image understanding',
+    'sisyphus-junior': 'Lightweight orchestrator for simpler tasks',
+  };
+  return roles[name] || 'General-purpose coding agent';
+}
+
 function ModelSelect({
   value,
   modelsByProvider,
@@ -307,7 +387,9 @@ function AgentRow({
   modelsByProvider,
   pending,
   suggestion,
+  suggestionRaw,
   isSuggesting,
+  ollamaReady,
   onModelChange,
   onAiSuggest,
   onAddFallback,
@@ -319,7 +401,9 @@ function AgentRow({
   modelsByProvider: [string, ModelView[]][];
   pending: PendingChange[];
   suggestion: SuggestionResponse['suggestion'];
+  suggestionRaw?: string;
   isSuggesting: boolean;
+  ollamaReady: boolean;
   onModelChange: (val: string) => void;
   onAiSuggest: () => void;
   onAddFallback: (modelId: string) => void;
@@ -339,12 +423,13 @@ function AgentRow({
         />
         <button
           onClick={onAiSuggest}
-          disabled={isSuggesting}
+          disabled={isSuggesting || !ollamaReady}
+          title={ollamaReady ? 'Ask Ollama for the best model' : 'Install Ollama and select a model'}
           style={{
             padding: '6px 12px',
             fontSize: 13,
-            cursor: isSuggesting ? 'wait' : 'pointer',
-            background: isSuggesting ? '#ccc' : '#6f42c1',
+            cursor: isSuggesting ? 'wait' : ollamaReady ? 'pointer' : 'not-allowed',
+            background: isSuggesting ? '#ccc' : ollamaReady ? '#6f42c1' : '#999',
             color: 'white',
             border: 'none',
             borderRadius: 4,
@@ -357,9 +442,15 @@ function AgentRow({
 
       {suggestion && (
         <div style={{ marginBottom: 12, padding: 10, background: '#e3f2fd', borderRadius: 4, fontSize: 13 }}>
-          <strong>AI Suggestion:</strong> {suggestion.suggestedValue}{' '}
+          <strong>🧠 Ollama Suggestion:</strong> {suggestion.suggestedValue}{' '}
           <span style={{ color: '#666' }}>({Math.round(suggestion.confidence * 100)}% confidence)</span>
           <div style={{ color: '#555', marginTop: 4 }}>{suggestion.reason}</div>
+          {suggestionRaw && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>Raw response</summary>
+              <pre style={{ fontSize: 11, background: '#f5f5f5', padding: 8, borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{suggestionRaw}</pre>
+            </details>
+          )}
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { ModelRegistry } from '../core/model-registry';
 import { SuggestionEngine } from '../core/suggestion-engine';
 import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
+import { listOllamaModels, generateWithOllama, buildSuggestionPrompt } from '../core/ollama-client';
 import type { Change } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
@@ -78,6 +79,53 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     const suggestions = engine.generate(focusedConfig);
     const match = suggestions.find((s) => s.targetName === agentName);
     return { suggestion: match || null };
+  });
+
+  app.get('/api/ollama/models', async () => {
+    try {
+      const models = await listOllamaModels();
+      return { available: true, models };
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err), models: [] };
+    }
+  });
+
+  app.post('/api/ollama/suggest-for-agent', async (request) => {
+    const { agentName, currentModel, agentDescription, ollamaModel } = request.body as {
+      agentName: string;
+      currentModel: string;
+      agentDescription: string;
+      ollamaModel: string;
+    };
+
+    const models = await getModels();
+    const prompt = buildSuggestionPrompt(agentName, currentModel, agentDescription, models);
+
+    try {
+      const response = await generateWithOllama(ollamaModel, prompt);
+      // Try to parse JSON from response (it might have extra whitespace or newlines)
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+      return {
+        suggestion: parsed
+          ? {
+              targetName: agentName,
+              currentValue: currentModel,
+              suggestedValue: parsed.model,
+              reason: parsed.reason,
+              confidence: 0.9,
+            }
+          : null,
+        raw: response,
+      };
+    } catch (err) {
+      return {
+        suggestion: null,
+        error: err instanceof Error ? err.message : String(err),
+        raw: null,
+      };
+    }
   });
 
   app.post('/api/apply', async (request) => {

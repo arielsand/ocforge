@@ -532,9 +532,25 @@ function ModelSelect({
   modelsByProvider: [string, ModelView[]][];
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
 }) {
+  // Check if current value belongs to a hidden provider (not in modelsByProvider)
+  const allVisibleIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [, models] of modelsByProvider) {
+      for (const m of models) ids.add(m.id);
+    }
+    return ids;
+  }, [modelsByProvider]);
+
+  const currentHidden = value && !allVisibleIds.has(value);
+
   return (
     <select value={value} onChange={onChange} style={{ flex: 1, padding: 8, fontSize: 14 }}>
       <option value="">-- select model --</option>
+      {currentHidden && (
+        <optgroup label="⚠️ Hidden provider">
+          <option key={value} value={value}>{value} (hidden provider)</option>
+        </optgroup>
+      )}
       {modelsByProvider.map(([provider, models]) => (
         <optgroup key={provider} label={provider}>
           {models.map((m) => (

@@ -14,12 +14,12 @@ program
 program
   .option('--config <path>', 'custom config directory')
   .option('--web', 'launch web UI')
-  .option('--btop', 'launch btop-style TUI (beta)')
+  .option('--tui', 'launch rich terminal UI (dashboard mode)')
   .option('--dry-run', 'show diff without applying changes')
   .action(async (options) => {
     if (options.web) {
       await startWebServer(3456, options.config);
-    } else if (options.btop) {
+    } else if (options.tui) {
       runBtopTUI();
     } else {
       await runTUI(options.config, options.dryRun);

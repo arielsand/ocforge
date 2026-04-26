@@ -233,6 +233,11 @@ export default function App() {
     }
     setSuggestingFor(agentName);
     try {
+      // Pass visible (checked) providers so Ollama only considers those models
+      const visibleProviders = providers
+        .filter(([p]) => !hiddenProviders.has(p))
+        .map(([p]) => p);
+
       const res = await fetch('/api/ollama/suggest-for-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,6 +246,7 @@ export default function App() {
           currentModel,
           agentDescription: getAgentRoleDescription(agentName),
           ollamaModel: selectedOllamaModel,
+          allowedProviders: visibleProviders,
         }),
       });
       const data: SuggestionResponse = await res.json();

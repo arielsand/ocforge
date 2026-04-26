@@ -92,14 +92,25 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
   });
 
   app.post('/api/ollama/suggest-for-agent', async (request) => {
-    const { agentName, currentModel, agentDescription, ollamaModel } = request.body as {
+    const { agentName, currentModel, agentDescription, ollamaModel, allowedProviders } = request.body as {
       agentName: string;
       currentModel: string;
       agentDescription: string;
       ollamaModel: string;
+      allowedProviders?: string[];
     };
 
-    const models = await getModels();
+    let models = await getModels();
+    if (allowedProviders && allowedProviders.length > 0) {
+      models = models.filter((m) => allowedProviders.includes(m.provider));
+    }
+    // Deduplicate by model id (same model might appear under multiple providers)
+    const seen = new Set<string>();
+    models = models.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
     const prompt = buildSuggestionPrompt(agentName, currentModel, agentDescription, models);
 
     try {

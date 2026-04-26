@@ -13,11 +13,12 @@ program
 program
   .option('--config <path>', 'custom config directory')
   .option('--web', 'launch web UI')
+  .option('--dry-run', 'show diff without applying changes')
   .action(async (options) => {
     if (options.web) {
-      await startWebServer(3456);
+      await startWebServer(3456, options.config);
     } else {
-      await runTUI(options.config);
+      await runTUI(options.config, options.dryRun);
     }
   });
 

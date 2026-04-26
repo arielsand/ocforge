@@ -11,6 +11,15 @@ export class JSONCWriter {
       copyFileSync(filePath, `${filePath}.bak.${timestamp}`);
     }
 
+    // Re-read right before writing to detect concurrent modification
+    const textBeforeApply = readFileSync(filePath, 'utf-8');
+    if (textBeforeApply !== text) {
+      throw new Error(
+        `Concurrent modification detected for ${filePath}. ` +
+        `The file was changed after we read it. Please retry.`
+      );
+    }
+
     const allEdits = changes
       .map((change) =>
         modify(text, change.jsonPath, change.newValue, {

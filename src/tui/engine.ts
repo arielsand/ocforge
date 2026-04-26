@@ -6,12 +6,18 @@ import { SuggestionEngine } from '../core/suggestion-engine';
 import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
 
-export async function runTUI(cwd?: string): Promise<void> {
+export async function runTUI(cwd?: string, dryRun = false): Promise<void> {
   intro('🔧 ocforge — OpenCode Model Configurator');
 
   const configs = discoverConfigs(cwd);
   const registry = new ModelRegistry();
-  await registry.refresh();
+  try {
+    await registry.refresh();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    outro(`❌ Could not list models: ${message}\nMake sure opencode is installed and in your PATH.`);
+    return;
+  }
 
   const action = await select({
     message: 'What would you like to do?',
@@ -28,15 +34,15 @@ export async function runTUI(cwd?: string): Promise<void> {
   }
 
   if (action === 'smart') {
-    await runSmartUpdate(configs, registry);
+    await runSmartUpdate(configs, registry, dryRun);
   } else {
-    await runBrowse(configs, registry);
+    await runBrowse(configs, registry, dryRun);
   }
 
   outro('Done!');
 }
 
-async function runSmartUpdate(configs: ConfigState, registry: ModelRegistry): Promise<void> {
+async function runSmartUpdate(configs: ConfigState, registry: ModelRegistry, dryRun = false): Promise<void> {
   const engine = new SuggestionEngine(registry);
   const suggestions = engine.generate(configs);
 
@@ -79,10 +85,18 @@ async function runSmartUpdate(configs: ConfigState, registry: ModelRegistry): Pr
     };
   });
 
-  await applyChangesWithPreview(changes);
+  await applyChangesWithPreview(changes, dryRun);
 }
 
-async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise<void> {
+function getOmOData(file: ConfigState['omo'][number]) {
+  return file.data;
+}
+
+function getOpenCodeData(file: ConfigState['opencode'][number]) {
+  return file.data;
+}
+
+async function runBrowse(configs: ConfigState, registry: ModelRegistry, dryRun = false): Promise<void> {
   const fileChoices = [
     ...configs.opencode.map((c) => ({ value: c.path, label: `OpenCode (${c.level}): ${c.path}` })),
     ...configs.omo.map((c) => ({ value: c.path, label: `OmO (${c.level}): ${c.path}` })),
@@ -110,6 +124,7 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise
   let oldValue: unknown;
 
   if (isOmO) {
+    const omoData = getOmOData(file as ConfigState['omo'][number]);
     const agentOrCategory = await select({
       message: 'Edit agents or categories?',
       options: [
@@ -119,7 +134,8 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise
     });
     if (isCancel(agentOrCategory)) return;
 
-    const names = Object.keys((file.data as any)[agentOrCategory] ?? {});
+    const collection = agentOrCategory === 'agents' ? omoData.agents : omoData.categories;
+    const names = Object.keys(collection ?? {});
     const name = await select({
       message: `Select ${agentOrCategory.slice(0, -1)}:`,
       options: names.map((n) => ({ value: n, label: n })),
@@ -127,8 +143,9 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise
     if (isCancel(name)) return;
 
     jsonPath = [agentOrCategory, name as string, 'model'];
-    oldValue = (file.data as any)[agentOrCategory]?.[name]?.model;
+    oldValue = collection?.[name as string]?.model;
   } else {
+    const ocData = getOpenCodeData(file as ConfigState['opencode'][number]);
     const field = await select({
       message: 'Select field:',
       options: [
@@ -138,7 +155,7 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise
     });
     if (isCancel(field)) return;
     jsonPath = [field as string];
-    oldValue = (file.data as any)[field];
+    oldValue = ocData[field as 'model' | 'small_model'];
   }
 
   const newModel = await select({
@@ -154,13 +171,18 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry): Promise
     newValue: newModel,
   };
 
-  await applyChangesWithPreview([change]);
+  await applyChangesWithPreview([change], dryRun);
 }
 
-async function applyChangesWithPreview(changes: Change[]): Promise<void> {
+async function applyChangesWithPreview(changes: Change[], dryRun = false): Promise<void> {
   for (const change of changes) {
     const diff = generateDiff(change.filePath, [change]);
     console.log(diff.summary);
+  }
+
+  if (dryRun) {
+    console.log('\n🚫 Dry run — no changes were applied.');
+    return;
   }
 
   const ok = await confirm({

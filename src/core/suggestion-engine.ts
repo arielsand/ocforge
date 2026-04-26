@@ -31,6 +31,9 @@ const CATEGORY_ROLES: Record<string, AgentRole> = {
   writing: { capabilityNeed: 'fast', preferredTier: ['flash', 'mini', 'standard'] },
 };
 
+const DEFAULT_AGENT_CONFIDENCE = 0.75;
+const DEFAULT_OPENCODE_CONFIDENCE = 0.7;
+
 export class SuggestionEngine {
   constructor(private registry: ModelRegistry) {}
 
@@ -49,7 +52,7 @@ export class SuggestionEngine {
             currentValue: oc.data.model,
             suggestedValue: best.id,
             reason: `Better orchestrator model: ${best.id} (${best.priceTier})`,
-            confidence: 0.7,
+            confidence: DEFAULT_OPENCODE_CONFIDENCE,
           });
         }
       }
@@ -62,7 +65,7 @@ export class SuggestionEngine {
             currentValue: oc.data.small_model,
             suggestedValue: best.id,
             reason: `Better small model: ${best.id} (${best.priceTier})`,
-            confidence: 0.7,
+            confidence: DEFAULT_OPENCODE_CONFIDENCE,
           });
         }
       }
@@ -82,7 +85,7 @@ export class SuggestionEngine {
             currentValue: currentModel,
             suggestedValue: best.id,
             reason: `${role.capabilityNeed} fit: ${best.id} (${best.priceTier})`,
-            confidence: 0.75,
+            confidence: DEFAULT_AGENT_CONFIDENCE,
           });
         }
       }

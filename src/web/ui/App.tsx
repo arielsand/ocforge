@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Wrench, Brain, Save, Trash2, Plus, RefreshCw, Cpu, Server, Zap, X, Check, AlertTriangle, Info, Loader2, Sparkles, GitBranch, Layers, Settings, HardDrive, XCircle, ArrowRight, ChevronDown
+  Wrench, Brain, Save, Trash2, Plus, RefreshCw, Cpu, Server, Zap, X, Check, AlertTriangle, Info, Loader2, Sparkles, GitBranch, Layers, Settings, HardDrive, XCircle, ArrowRight, ChevronDown, FolderOpen, Copy
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -35,6 +35,17 @@ interface Snapshot {
   name: string;
   createdAt: string;
   description?: string;
+}
+
+interface Profile {
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  assignments: {
+    agents: Record<string, { model?: string; fallback_models?: unknown[] }>;
+    categories: Record<string, { model?: string; fallback_models?: unknown[] }>;
+  };
 }
 
 interface ConfigFile {
@@ -242,15 +253,22 @@ export default function App() {
   const [showSnapshotsModal, setShowSnapshotsModal] = useState(false);
   const [snapshotName, setSnapshotName] = useState('');
   const [snapshotDesc, setSnapshotDesc] = useState('');
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [showProfilesModal, setShowProfilesModal] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileDesc, setProfileDesc] = useState('');
+  const [profileAction, setProfileAction] = useState<'save' | 'rename'>('save');
+  const [renameTarget, setRenameTarget] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const [cfgRes, modelsRes, ollamaRes, snapshotsRes] = await Promise.all([
+        const [cfgRes, modelsRes, ollamaRes, snapshotsRes, profilesRes] = await Promise.all([
           fetch('/api/configs'),
           fetch('/api/models'),
           fetch('/api/ollama/models'),
           fetch('/api/snapshots'),
+          fetch('/api/profiles'),
         ]);
         const cfgData = await cfgRes.json();
         const modelsData = await modelsRes.json();
@@ -260,6 +278,8 @@ export default function App() {
         setConfigs(cfgData);
         setModels(modelsData);
         setSnapshots(snapshotsData.snapshots || []);
+        const profilesData = await profilesRes.json();
+        setProfiles(profilesData.profiles || []);
 
         if (ollamaData.available) {
           setOllamaAvailable(true);
@@ -406,6 +426,53 @@ export default function App() {
     setSnapshots(data.snapshots || []);
   };
 
+  const saveProfileAction = async () => {
+    if (!profileName.trim()) return;
+    await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: profileName.trim(), description: profileDesc.trim() || undefined }),
+    });
+    const res = await fetch('/api/profiles');
+    const data = await res.json();
+    setProfiles(data.profiles || []);
+    setShowProfilesModal(false);
+    setProfileName('');
+    setProfileDesc('');
+  };
+
+  const applyProfileAction = async (name: string) => {
+    if (!confirm(`Apply profile "${name}"? This will overwrite current model assignments.`)) return;
+    const res = await fetch(`/api/profiles/${encodeURIComponent(name)}/apply`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      const cfgRes = await fetch('/api/configs');
+      setConfigs(await cfgRes.json());
+      setPending([]);
+    } else {
+      setError(data.message || data.error || 'Failed to apply profile');
+    }
+  };
+
+  const deleteProfileAction = async (name: string) => {
+    if (!confirm(`Delete profile "${name}"?`)) return;
+    await fetch(`/api/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    const res = await fetch('/api/profiles');
+    const data = await res.json();
+    setProfiles(data.profiles || []);
+  };
+
+  const renameProfileAction = async (oldName: string, newName: string) => {
+    await fetch(`/api/profiles/${encodeURIComponent(oldName)}/rename`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newName }),
+    });
+    const res = await fetch('/api/profiles');
+    const data = await res.json();
+    setProfiles(data.profiles || []);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -460,6 +527,10 @@ export default function App() {
               )}
             </div>
 
+            <Button variant="secondary" size="sm" onClick={() => setShowProfilesModal(true)}>
+              <FolderOpen className="w-4 h-4" />
+              Profiles
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowSnapshotsModal(true)}>
               <HardDrive className="w-4 h-4" />
               Snapshots
@@ -910,6 +981,124 @@ export default function App() {
                 <Button variant="secondary" onClick={() => setShowSaveModal(false)}>Cancel</Button>
                 <Button onClick={saveSnapshot} disabled={!snapshotName.trim()}>Save Snapshot</Button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Profiles Modal */}
+      {showProfilesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FolderOpen className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-semibold text-zinc-100">Profiles</h3>
+                <span className="text-xs text-zinc-500">{profiles.length} saved</span>
+              </div>
+              <button onClick={() => setShowProfilesModal(false)} className="p-1 rounded hover:bg-zinc-800 text-zinc-500 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </CardHeader>
+            <CardContent className="overflow-y-auto space-y-4">
+              <div className="flex items-center gap-3">
+                <Button onClick={() => { setProfileAction('save'); setProfileName(''); setProfileDesc(''); setRenameTarget(''); }}>
+                  <Save className="w-4 h-4" />
+                  Save Current as Profile
+                </Button>
+              </div>
+
+              {/* Save Profile Form */}
+              {profileAction === 'save' && (
+                <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-800 space-y-3">
+                  <p className="text-sm font-medium text-zinc-300">Save current model assignments as a named profile</p>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="e.g. Economy Mode"
+                      className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">Description (optional)</label>
+                    <input
+                      type="text"
+                      value={profileDesc}
+                      onChange={(e) => setProfileDesc(e.target.value)}
+                      placeholder="e.g. Cheapest models for everyday work"
+                      className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setProfileAction('save')}>Cancel</Button>
+                    <Button size="sm" onClick={saveProfileAction} disabled={!profileName.trim()}>Save Profile</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Rename Profile Form */}
+              {profileAction === 'rename' && renameTarget && (
+                <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-800 space-y-3">
+                  <p className="text-sm font-medium text-zinc-300">Rename "{renameTarget}"</p>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">New name</label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="New profile name"
+                      className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setRenameTarget('')}>Cancel</Button>
+                    <Button size="sm" onClick={() => { renameProfileAction(renameTarget, profileName); setRenameTarget(''); setProfileName(''); }} disabled={!profileName.trim()}>Rename</Button>
+                  </div>
+                </div>
+              )}
+
+              {profiles.length > 0 ? (
+                <div className="space-y-2">
+                  {profiles.map((p) => (
+                    <div key={p.name} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-800">
+                      <div className="min-w-0">
+                        <p className="font-medium text-zinc-200">{p.name}</p>
+                        {p.description && <p className="text-xs text-zinc-500 mt-0.5">{p.description}</p>}
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <Badge className="bg-zinc-800 text-zinc-500 border-zinc-700">
+                            <Zap className="w-3 h-3" />
+                            {Object.keys(p.assignments.agents).length} agents
+                          </Badge>
+                          <Badge className="bg-zinc-800 text-zinc-500 border-zinc-700">
+                            <Layers className="w-3 h-3" />
+                            {Object.keys(p.assignments.categories).length} categories
+                          </Badge>
+                          <span className="text-xs text-zinc-600">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-4">
+                        <Button variant="secondary" size="sm" onClick={() => { setShowProfilesModal(false); applyProfileAction(p.name); }}>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Apply
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => { setProfileAction('rename'); setRenameTarget(p.name); setProfileName(p.name); }}>
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => deleteProfileAction(p.name)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">No profiles saved yet. Save your current model assignments as a profile to quickly switch between configurations.</p>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -1,10 +1,16 @@
-import { intro, outro, select, confirm, isCancel, multiselect } from '@clack/prompts';
+import { intro, outro, select, confirm, isCancel, multiselect, text } from '@clack/prompts';
 import type { ConfigState, Change } from '../types';
 import { discoverConfigs } from '../core/config-loader';
 import { ModelRegistry } from '../core/model-registry';
 import { SuggestionEngine } from '../core/suggestion-engine';
 import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
+import {
+  listProfiles,
+  saveProfile,
+  deleteProfile,
+  applyProfile,
+} from '../core/profile-manager';
 
 export async function runTUI(cwd?: string, dryRun = false): Promise<void> {
   intro('🔧 ocforge — OpenCode Model Configurator');
@@ -24,6 +30,7 @@ export async function runTUI(cwd?: string, dryRun = false): Promise<void> {
     options: [
       { value: 'browse', label: '📁 Browse & edit configs' },
       { value: 'smart', label: '🧠 Smart Update (suggest new models)' },
+      { value: 'profiles', label: '💾 Manage Profiles' },
       { value: 'exit', label: '❌ Exit' },
     ],
   });
@@ -35,6 +42,8 @@ export async function runTUI(cwd?: string, dryRun = false): Promise<void> {
 
   if (action === 'smart') {
     await runSmartUpdate(configs, registry, dryRun);
+  } else if (action === 'profiles') {
+    await runProfiles(configs, dryRun);
   } else {
     await runBrowse(configs, registry, dryRun);
   }
@@ -207,5 +216,117 @@ async function applyChangesWithPreview(changes: Change[], dryRun = false): Promi
   for (const [path, fileChanges] of byFile) {
     writer.applyChanges(path, fileChanges, true);
     console.log(`✅ Updated ${path}`);
+  }
+}
+
+async function runProfiles(configs: ConfigState, dryRun = false): Promise<void> {
+  const profiles = listProfiles();
+
+  const profileAction = await select({
+    message: 'Profile management:',
+    options: [
+      { value: 'list', label: '📋 List profiles' },
+      { value: 'save', label: '💾 Save current as profile' },
+      { value: 'apply', label: '▶️ Apply profile' },
+      { value: 'delete', label: '🗑️ Delete profile' },
+      { value: 'back', label: '← Back' },
+    ],
+  });
+
+  if (isCancel(profileAction) || profileAction === 'back') return;
+
+  if (profileAction === 'list') {
+    if (profiles.length === 0) {
+      console.log('No profiles saved yet.');
+      return;
+    }
+    console.log(`\n${profiles.length} profile(s):\n`);
+    for (const p of profiles) {
+      const agentCount = Object.keys(p.assignments.agents).length;
+      const catCount = Object.keys(p.assignments.categories).length;
+      console.log(`  • ${p.name}`);
+      if (p.description) console.log(`    ${p.description}`);
+      console.log(`    ${agentCount} agents, ${catCount} categories — ${new Date(p.updatedAt).toLocaleDateString()}`);
+    }
+    console.log();
+    return;
+  }
+
+  if (profileAction === 'save') {
+    const name = await text({
+      message: 'Profile name:',
+      placeholder: 'e.g. Economy Mode',
+    });
+    if (isCancel(name) || !name) return;
+
+    const desc = await text({
+      message: 'Description (optional):',
+      placeholder: 'e.g. Cheapest models for everyday work',
+    });
+
+    const omoFile = configs.omo[0];
+    if (!omoFile) {
+      console.log('No OmO config found.');
+      return;
+    }
+
+    const profile = saveProfile(name, omoFile.data as import('../types').OmOConfig, isCancel(desc) ? undefined : desc || undefined);
+    console.log(`✅ Profile "${profile.name}" saved (${Object.keys(profile.assignments.agents).length} agents, ${Object.keys(profile.assignments.categories).length} categories)`);
+    return;
+  }
+
+  if (profileAction === 'apply') {
+    if (profiles.length === 0) {
+      console.log('No profiles saved yet.');
+      return;
+    }
+
+    const name = await select({
+      message: 'Select profile to apply:',
+      options: profiles.map((p) => ({ value: p.name, label: p.name })),
+    });
+    if (isCancel(name)) return;
+
+    const omoFile = configs.omo[0];
+    if (!omoFile) {
+      console.log('No OmO config found.');
+      return;
+    }
+
+    if (dryRun) {
+      console.log(`🚫 Dry run — would apply profile "${name}"`);
+      return;
+    }
+
+    const result = applyProfile(name, omoFile.path, omoFile.data as import('../types').OmOConfig);
+    if (result.success) {
+      console.log(`✅ ${result.message}`);
+    } else {
+      console.log(`❌ ${result.message}`);
+    }
+    return;
+  }
+
+  if (profileAction === 'delete') {
+    if (profiles.length === 0) {
+      console.log('No profiles saved yet.');
+      return;
+    }
+
+    const name = await select({
+      message: 'Select profile to delete:',
+      options: profiles.map((p) => ({ value: p.name, label: p.name })),
+    });
+    if (isCancel(name)) return;
+
+    const ok = await confirm({ message: `Delete profile "${name}"?`, initialValue: false });
+    if (isCancel(ok) || !ok) return;
+
+    const deleted = deleteProfile(name);
+    if (deleted) {
+      console.log(`✅ Profile "${name}" deleted.`);
+    } else {
+      console.log(`❌ Profile "${name}" not found.`);
+    }
   }
 }

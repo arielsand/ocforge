@@ -8,6 +8,14 @@ import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
 import { listOllamaModels, generateWithOllama, buildSuggestionPrompt } from '../core/ollama-client';
 import { listSnapshots, saveSnapshot, loadSnapshot, deleteSnapshot } from '../core/snapshot-manager';
+import {
+  listProfiles,
+  saveProfile,
+  loadProfile,
+  deleteProfile,
+  renameProfile,
+  applyProfile,
+} from '../core/profile-manager';
 import type { Change } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
@@ -174,6 +182,50 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     const { name } = request.params as { name: string };
     const deleted = deleteSnapshot(name);
     return { success: deleted };
+  });
+
+  // Profiles
+  app.get('/api/profiles', async () => {
+    return { profiles: listProfiles() };
+  });
+
+  app.post('/api/profiles', async (request) => {
+    const { name, description } = request.body as { name: string; description?: string };
+    const configs = discoverConfigs(cwd);
+    const omoFile = configs.omo[0];
+    if (!omoFile) {
+      return { success: false, error: 'No OmO config found' };
+    }
+    const profile = saveProfile(name, omoFile.data as import('../types').OmOConfig, description);
+    return { success: true, profile };
+  });
+
+  app.post('/api/profiles/:name/apply', async (request) => {
+    const { name } = request.params as { name: string };
+    const configs = discoverConfigs(cwd);
+    const omoFile = configs.omo[0];
+    if (!omoFile) {
+      return { success: false, error: 'No OmO config found' };
+    }
+    const result = applyProfile(
+      name,
+      omoFile.path,
+      omoFile.data as import('../types').OmOConfig
+    );
+    return result;
+  });
+
+  app.delete('/api/profiles/:name', async (request) => {
+    const { name } = request.params as { name: string };
+    const deleted = deleteProfile(name);
+    return { success: deleted };
+  });
+
+  app.put('/api/profiles/:name/rename', async (request) => {
+    const { name } = request.params as { name: string };
+    const { newName } = request.body as { newName: string };
+    const renamed = renameProfile(name, newName);
+    return { success: renamed };
   });
 
   app.post('/api/apply', async (request) => {

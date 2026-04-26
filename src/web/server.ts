@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { discoverConfigs } from '../core/config-loader';
 import { ModelRegistry } from '../core/model-registry';
@@ -17,6 +17,17 @@ import {
   applyProfile,
 } from '../core/profile-manager';
 import { signalReload } from '../core/reload-signaler';
+
+function findPkgRoot(): string {
+  const candidates = [
+    join(dirname(Bun.main ?? ''), '..'),
+    join(process.cwd()),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(join(dir, 'package.json'))) return dir;
+  }
+  return process.cwd();
+}
 import type { Change } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
@@ -262,7 +273,8 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
   });
 
   // Serve static frontend build
-  const webDir = join(process.cwd(), 'dist', 'web');
+  const pkgRoot = findPkgRoot();
+  const webDir = join(pkgRoot, 'dist', 'web');
   const indexPath = join(webDir, 'index.html');
 
   if (existsSync(indexPath)) {

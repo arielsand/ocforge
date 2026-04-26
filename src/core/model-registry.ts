@@ -27,13 +27,58 @@ function inferCapabilities(modelId: string): ModelInfo['capabilities'] {
 
 function inferPriceTier(modelId: string): ModelInfo['priceTier'] {
   const lower = modelId.toLowerCase();
+  // Cheapest
   if (lower.includes('nano')) return 'nano';
+  // Cheap / fast
   if (lower.includes('mini')) return 'mini';
-  if (lower.includes('flash')) return 'flash';
   if (lower.includes('haiku')) return 'mini';
+  if (lower.includes('flash')) return 'flash';
+  // Mid-tier
   if (lower.includes('sonnet')) return 'sonnet';
+  // High-tier
   if (lower.includes('opus')) return 'opus';
-  if (lower.includes('gpt-5')) return 'standard';
+  if (lower.includes('claude-3-5')) return 'standard';
+  if (lower.includes('claude-4')) return 'standard';
+  // OpenAI family
+  if (/gpt-5[.\d]*/.test(lower)) return 'standard';
+  // Google Gemini
+  if (lower.includes('gemini') && lower.includes('pro')) return 'standard';
+  if (lower.includes('gemini') && lower.includes('flash')) return 'flash';
+  if (lower.includes('gemini') && lower.includes('ultra')) return 'opus';
+  // Kimi
+  if (lower.includes('kimi')) return lower.includes('thinking') ? 'opus' : 'sonnet';
+  // GLM
+  if (lower.includes('glm')) return 'sonnet';
+  // Minimax
+  if (lower.includes('minimax')) return 'mini';
+  // Gemma
+  if (lower.includes('gemma')) return 'mini';
+  // Grok
+  if (lower.includes('grok')) return 'sonnet';
+  // Qwen
+  if (lower.includes('qwen')) return 'mini';
+  // Mistral
+  if (lower.includes('mistral')) return 'mini';
+  // DeepSeek
+  if (lower.includes('deepseek')) return lower.includes('flash') ? 'flash' : 'standard';
+  // Nemotron
+  if (lower.includes('nemotron')) return lower.includes('super') ? 'standard' : lower.includes('nano') ? 'nano' : 'mini';
+  // GPT-4 family (OpenAI legacy)
+  if (lower.includes('gpt-4')) return 'standard';
+  // OSS models (OpenAI open source)
+  if (lower.includes('gpt-oss')) return 'standard';
+  // Cogito
+  if (lower.includes('cogito')) return 'standard';
+  // Devstral
+  if (lower.includes('devstral')) return 'sonnet';
+  // RNJ
+  if (lower.includes('rnj')) return 'mini';
+  // Hy
+  if (lower.includes('hy')) return 'mini';
+  // Mimo
+  if (lower.includes('mimo')) return 'mini';
+  // Big-pickle
+  if (lower.includes('big-pickle')) return 'standard';
   return 'unknown';
 }
 

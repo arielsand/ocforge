@@ -582,90 +582,96 @@ function AgentRow({
 
   return (
     <div style={{ marginBottom: 20, padding: 16, background: '#fafafa', borderRadius: 6, border: '1px solid #eee' }}>
-      <div style={{ marginBottom: 4 }}>
-        <label style={{ minWidth: 120, fontWeight: 600, fontSize: 15 }}>{name}</label>
-      </div>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 8, marginLeft: 2 }}>
-        {getAgentRoleDescription(name)}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <label style={{ minWidth: 120 }}></label>
-        <ModelSelect
-          value={modelPending ? modelPending.newValue : (cfg.model ?? '')}
-          modelsByProvider={modelsByProvider}
-          onChange={(e) => onModelChange(e.target.value)}
-        />
-        <button
-          onClick={onAiSuggest}
-          disabled={isSuggesting || !ollamaReady}
-          title={ollamaReady ? 'Ask Ollama for the best model' : 'Install Ollama and select a model'}
-          style={{
-            padding: '6px 12px',
-            fontSize: 13,
-            cursor: isSuggesting ? 'wait' : ollamaReady ? 'pointer' : 'not-allowed',
-            background: isSuggesting ? '#ccc' : ollamaReady ? '#6f42c1' : '#999',
-            color: 'white',
-            border: 'none',
-            borderRadius: 4,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isSuggesting ? '🤔 Thinking...' : '🤖 AI Suggest'}
-        </button>
-      </div>
-
-      {suggestion && (
-        <div style={{ marginBottom: 12, padding: 10, background: '#e3f2fd', borderRadius: 4, fontSize: 13 }}>
-          <strong>🧠 Ollama Suggestion:</strong> {suggestion.suggestedValue}{' '}
-          <span style={{ color: '#666' }}>({Math.round(suggestion.confidence * 100)}% confidence)</span>
-          <div style={{ color: '#555', marginTop: 4 }}>{suggestion.reason}</div>
-          {suggestionRaw && (
-            <details style={{ marginTop: 8 }}>
-              <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>Raw response</summary>
-              <pre style={{ fontSize: 11, background: '#f5f5f5', padding: 8, borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{suggestionRaw}</pre>
-            </details>
-          )}
+      <div style={{ display: 'flex', gap: 16 }}>
+        {/* Left column: name + description */}
+        <div style={{ width: 220, flexShrink: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>{name}</div>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 4, lineHeight: 1.4 }}>
+            {getAgentRoleDescription(name)}
+          </div>
         </div>
-      )}
 
-      {/* Fallback Models */}
-      <div style={{ marginLeft: 132 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 6, fontWeight: 600 }}>Fallback models:</div>
-        {fallbacks.length === 0 && <div style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>No fallbacks configured</div>}
-        {fallbacks.map((fb, idx) => (
-          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 13 }}>
-            <span style={{ color: '#666' }}>{idx + 1}.</span>
-            <code>{fb}</code>
+        {/* Right column: controls */}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <ModelSelect
+              value={modelPending ? modelPending.newValue : (cfg.model ?? '')}
+              modelsByProvider={modelsByProvider}
+              onChange={(e) => onModelChange(e.target.value)}
+            />
             <button
-              onClick={() => onRemoveFallback(idx)}
-              style={{ fontSize: 11, color: '#cc0000', border: 'none', background: 'none', cursor: 'pointer' }}
+              onClick={onAiSuggest}
+              disabled={isSuggesting || !ollamaReady}
+              title={ollamaReady ? 'Ask Ollama for the best model' : 'Install Ollama and select a model'}
+              style={{
+                padding: '6px 12px',
+                fontSize: 13,
+                cursor: isSuggesting ? 'wait' : ollamaReady ? 'pointer' : 'not-allowed',
+                background: isSuggesting ? '#ccc' : ollamaReady ? '#6f42c1' : '#999',
+                color: 'white',
+                border: 'none',
+                borderRadius: 4,
+                whiteSpace: 'nowrap',
+              }}
             >
-              remove
+              {isSuggesting ? '🤔 Thinking...' : '🤖 AI Suggest'}
             </button>
           </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <span style={{ fontSize: 12, color: '#666' }}>Add:</span>
-          <select
-            onChange={(e) => {
-              if (e.target.value) {
-                onAddFallback(e.target.value);
-                e.target.value = '';
-              }
-            }}
-            style={{ padding: 4, fontSize: 13 }}
-          >
-            <option value="">-- select fallback model --</option>
-            {modelsByProvider.map(([provider, models]) => (
-              <optgroup key={provider} label={provider}>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                  </option>
-                ))}
-              </optgroup>
+
+          {suggestion && (
+            <div style={{ marginBottom: 12, padding: 10, background: '#e3f2fd', borderRadius: 4, fontSize: 13 }}>
+              <strong>🧠 Ollama Suggestion:</strong> {suggestion.suggestedValue}{' '}
+              <span style={{ color: '#666' }}>({Math.round(suggestion.confidence * 100)}% confidence)</span>
+              <div style={{ color: '#555', marginTop: 4 }}>{suggestion.reason}</div>
+              {suggestionRaw && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>Raw response</summary>
+                  <pre style={{ fontSize: 11, background: '#f5f5f5', padding: 8, borderRadius: 4, overflow: 'auto', maxHeight: 120 }}>{suggestionRaw}</pre>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* Fallback Models */}
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 6, fontWeight: 600 }}>Fallback models:</div>
+            {fallbacks.length === 0 && <div style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>No fallbacks configured</div>}
+            {fallbacks.map((fb, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 13 }}>
+                <span style={{ color: '#666' }}>{idx + 1}.</span>
+                <code>{fb}</code>
+                <button
+                  onClick={() => onRemoveFallback(idx)}
+                  style={{ fontSize: 11, color: '#cc0000', border: 'none', background: 'none', cursor: 'pointer' }}
+                >
+                  remove
+                </button>
+              </div>
             ))}
-          </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <span style={{ fontSize: 12, color: '#666' }}>Add:</span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    onAddFallback(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                style={{ padding: 4, fontSize: 13 }}
+              >
+                <option value="">-- select fallback model --</option>
+                {modelsByProvider.map(([provider, models]) => (
+                  <optgroup key={provider} label={provider}>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </div>

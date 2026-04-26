@@ -420,7 +420,7 @@ export default function App() {
     const panelColor = focused ? '#e91e63' : '#333';
 
     return (
-      <Box flexDirection="column" width="35%" borderStyle="single" borderColor={panelColor}>
+      <Box flexDirection="column" width="37%" borderStyle="single" borderColor={panelColor}>
         <Box paddingX={1}>
           <Text color="#e91e63" bold>🎭 Agents</Text>
           {focused && <Text color="#666"> ← active</Text>}
@@ -515,7 +515,7 @@ export default function App() {
     const ocData = oc?.data as Record<string, any> | undefined;
 
     return (
-      <Box flexDirection="column" width="30%" borderStyle="single" borderColor={panelColor}>
+      <Box flexDirection="column" width="28%" borderStyle="single" borderColor={panelColor}>
         <Box paddingX={1}>
           <Text color="#00bcd4" bold>⚙️ OpenCode</Text>
           {focused && <Text color="#666"> ← active</Text>}

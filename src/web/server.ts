@@ -305,5 +305,8 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
   }
 
   await app.listen({ port, host: '127.0.0.1' });
-  console.log(`🌐 ocforge web UI running at http://localhost:${port}`);
+  const url = `http://localhost:${port}`;
+  console.log(`🌐 ocforge web UI running at ${url}`);
+  const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+  try { Bun.spawn([openCmd, url]); } catch {}
 }

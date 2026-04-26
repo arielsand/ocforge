@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "OpenCode Agent & Model Configurator — reconfigure AI models/providers across OpenCode and Oh My OpenAgent",
   "type": "module",
-  "main": "src/index.ts",
   "bin": {
     "ocforge": "./dist/cli.js"
   },
@@ -52,13 +51,5 @@
     "react-devtools-core": "^7.0.1",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
-  },
-  "peerDependencies": {
-    "@opencode-ai/plugin": "*"
-  },
-  "peerDependenciesMeta": {
-    "@opencode-ai/plugin": {
-      "optional": true
-    }
   }
 }

@@ -68,13 +68,14 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
 
     // Build a focused config with just this agent
     const omoFile = configs.omo.find((c) => c.path === filePath);
-    if (!omoFile || !omoFile.data.agents?.[agentName]) {
+    const omoData = omoFile?.data as import('../types').OmOConfig;
+    if (!omoFile || !omoData.agents?.[agentName]) {
       return { suggestion: null, error: 'Agent not found' };
     }
 
     const focusedConfig = {
       opencode: configs.opencode,
-      omo: [{ ...omoFile, data: { agents: { [agentName]: omoFile.data.agents[agentName] } } }],
+      omo: [{ ...omoFile, data: { agents: { [agentName]: omoData.agents[agentName] } } }],
     };
 
     const suggestions = engine.generate(focusedConfig);

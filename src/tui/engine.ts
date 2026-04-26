@@ -134,7 +134,8 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry, dryRun =
     });
     if (isCancel(agentOrCategory)) return;
 
-    const collection = agentOrCategory === 'agents' ? omoData.agents : omoData.categories;
+    type ItemConfig = { model?: string };
+    const collection = (agentOrCategory === 'agents' ? omoData.agents : omoData.categories) as Record<string, ItemConfig> | undefined;
     const names = Object.keys(collection ?? {});
     const name = await select({
       message: `Select ${agentOrCategory.slice(0, -1)}:`,

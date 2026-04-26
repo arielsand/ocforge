@@ -1,4 +1,4 @@
-import type { ModelInfo, ConfigState, Suggestion } from '../types';
+import type { ModelInfo, ConfigState, Suggestion, OmOConfig, AgentConfig, CategoryConfig } from '../types';
 import { ModelRegistry } from './model-registry';
 
 interface AgentRole {
@@ -42,27 +42,27 @@ export class SuggestionEngine {
     const models = this.registry.list();
 
     if (configs.opencode.length > 0) {
-      const oc = configs.opencode[0];
-      if (oc.data.model) {
-        const best = this.pickBestModel(oc.data.model, models, 'orchestrator', ['opus', 'sonnet', 'standard']);
-        if (best && best.id !== oc.data.model) {
+      const ocData = configs.opencode[0].data as import('../types').OpenCodeConfig;
+      if (ocData.model) {
+        const best = this.pickBestModel(ocData.model, models, 'orchestrator', ['opus', 'sonnet', 'standard']);
+        if (best && best.id !== ocData.model) {
           suggestions.push({
             targetType: 'opencode-model',
             targetName: 'model',
-            currentValue: oc.data.model,
+            currentValue: ocData.model,
             suggestedValue: best.id,
             reason: `Better orchestrator model: ${best.id} (${best.priceTier})`,
             confidence: DEFAULT_OPENCODE_CONFIDENCE,
           });
         }
       }
-      if (oc.data.small_model) {
-        const best = this.pickBestModel(oc.data.small_model, models, 'fast', ['nano', 'mini', 'flash']);
-        if (best && best.id !== oc.data.small_model) {
+      if (ocData.small_model) {
+        const best = this.pickBestModel(ocData.small_model, models, 'fast', ['nano', 'mini', 'flash']);
+        if (best && best.id !== ocData.small_model) {
           suggestions.push({
             targetType: 'opencode-small-model',
             targetName: 'small_model',
-            currentValue: oc.data.small_model,
+            currentValue: ocData.small_model,
             suggestedValue: best.id,
             reason: `Better small model: ${best.id} (${best.priceTier})`,
             confidence: DEFAULT_OPENCODE_CONFIDENCE,
@@ -73,8 +73,13 @@ export class SuggestionEngine {
 
     if (configs.omo.length > 0) {
       const omo = configs.omo[0];
-      for (const [name, cfg] of Object.entries(omo.data.agents ?? {})) {
-        const currentModel = cfg?.model;
+      const omoData = omo.data as OmOConfig;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const agents = (omoData.agents ?? {}) as Record<string, any>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const categories = (omoData.categories ?? {}) as Record<string, any>;
+      for (const [name, cfg] of Object.entries(agents)) {
+        const currentModel = cfg.model as string | undefined;
         if (!currentModel) continue;
         const role = AGENT_ROLES[name] ?? { capabilityNeed: 'general', preferredTier: ['standard', 'sonnet', 'mini'] };
         const best = this.pickBestModel(currentModel, models, role.capabilityNeed, role.preferredTier);
@@ -90,8 +95,8 @@ export class SuggestionEngine {
         }
       }
 
-      for (const [name, cfg] of Object.entries(omo.data.categories ?? {})) {
-        const currentModel = cfg?.model;
+      for (const [name, cfg] of Object.entries(categories)) {
+        const currentModel = cfg.model as string | undefined;
         if (!currentModel) continue;
         const role = CATEGORY_ROLES[name] ?? { capabilityNeed: 'general', preferredTier: ['standard', 'sonnet', 'mini'] };
         const best = this.pickBestModel(currentModel, models, role.capabilityNeed, role.preferredTier);

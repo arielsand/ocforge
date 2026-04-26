@@ -10,7 +10,7 @@
     "declaration": true,
     "outDir": "dist",
     "jsx": "react-jsx",
-    "types": ["bun-types"]
+    "types": ["node", "bun-types"]
   },
   "include": ["src/**/*", "tests/**/*"]
 }

@@ -340,30 +340,33 @@ export default function App() {
     setConfigs(await res.json());
   };
 
-  const aiSuggest = async (agentName: string, filePath: string, currentModel: string) => {
+  const aiSuggest = async (name: string, filePath: string, currentModel: string, type: 'agent' | 'category' = 'agent') => {
     if (!selectedOllamaModel) {
       setError('Please select an Ollama model first');
       return;
     }
-    setSuggestingFor(agentName);
+    setSuggestingFor(name);
     try {
       const visibleProviders = providers.filter(([p]) => !hiddenProviders.has(p)).map(([p]) => p);
+      const description = type === 'agent' ? getAgentRoleDescription(name) : `Category: ${name}`;
       const res = await fetch('/api/ollama/suggest-for-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agentName,
+          agentName: name,
           currentModel,
-          agentDescription: getAgentRoleDescription(agentName),
+          agentDescription: description,
           ollamaModel: selectedOllamaModel,
           allowedProviders: visibleProviders,
         }),
       });
       const data: SuggestionResponse = await res.json();
-      setSuggestionResult((prev) => ({ ...prev, [agentName]: data.suggestion }));
-      if (data.raw) setSuggestionRaw((prev) => ({ ...prev, [agentName]: data.raw! }));
+      setSuggestionResult((prev) => ({ ...prev, [name]: data.suggestion }));
+      if (data.raw) setSuggestionRaw((prev) => ({ ...prev, [name]: data.raw! }));
       if (data.suggestion) {
-        addChange(filePath, ['agents', agentName, 'model'], data.suggestion.currentValue, data.suggestion.suggestedValue, `${agentName} model (AI suggested)`);
+        const jsonPath = type === 'agent' ? ['agents', name, 'model'] : ['categories', name, 'model'];
+        const display = type === 'agent' ? `${name} model (AI suggested)` : `${name} category (AI suggested)`;
+        addChange(filePath, jsonPath, data.suggestion.currentValue, data.suggestion.suggestedValue, display);
       }
     } catch (err) {
       setError(`AI suggest failed: ${err}`);
@@ -680,12 +683,29 @@ export default function App() {
                   const currentValue = modelPending ? modelPending.newValue : (cfg.model ?? '');
                   const provider = String(currentValue).split('/')[0] || '';
                   const tier = models.find((m) => m.id === currentValue)?.priceTier || '';
+                  const suggestion = suggestionResult[name];
 
                   return (
                     <Card key={name}>
                       <CardContent className="py-4">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="font-medium text-zinc-200">{name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-zinc-200">{name}</h3>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => aiSuggest(name, c.path, cfg.model ?? '', 'category')}
+                              disabled={suggestingFor === name || !ollamaAvailable || !selectedOllamaModel}
+                              className="px-2 py-1 text-xs"
+                            >
+                              {suggestingFor === name ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5" />
+                              )}
+                              AI
+                            </Button>
+                          </div>
                           <div className="flex items-center gap-1.5">
                             {provider && <Badge className={getProviderBadge(provider)}>{provider}</Badge>}
                             {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
@@ -704,6 +724,17 @@ export default function App() {
                             </optgroup>
                           ))}
                         </Select>
+
+                        {suggestion && (
+                          <div className="mt-3 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Brain className="w-4 h-4 text-indigo-400" />
+                              <span className="text-indigo-300 font-medium">{suggestion.suggestedValue}</span>
+                              <span className="text-zinc-500">({Math.round(suggestion.confidence * 100)}%)</span>
+                            </div>
+                            <p className="text-xs text-zinc-500 mt-1">{suggestion.reason}</p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );

@@ -1,4 +1,6 @@
 import Fastify from 'fastify';
+import { join } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import { discoverConfigs } from '../core/config-loader';
 import { ModelRegistry } from '../core/model-registry';
 import { SuggestionEngine } from '../core/suggestion-engine';
@@ -68,6 +70,37 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     }
     return { success: true, modified: [...byFile.keys()] };
   });
+
+  // Serve static frontend build
+  const webDir = join(process.cwd(), 'dist', 'web');
+  const indexPath = join(webDir, 'index.html');
+
+  if (existsSync(indexPath)) {
+    app.get('*', async (request, reply) => {
+      const reqPath = request.url === '/' ? 'index.html' : request.url.slice(1);
+      const filePath = join(webDir, reqPath);
+      if (existsSync(filePath)) {
+        const content = readFileSync(filePath);
+        const ext = reqPath.split('.').pop() || '';
+        const mimeTypes: Record<string, string> = {
+          html: 'text/html',
+          js: 'application/javascript',
+          css: 'text/css',
+          json: 'application/json',
+          svg: 'image/svg+xml',
+          png: 'image/png',
+          jpg: 'image/jpeg',
+        };
+        reply.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+        return reply.send(content);
+      }
+      // Fallback to index.html for SPA routing
+      reply.header('Content-Type', 'text/html');
+      return reply.send(readFileSync(indexPath));
+    });
+  } else {
+    console.warn(`⚠️  Frontend build not found at ${webDir}. Run 'bun run build:web' first.`);
+  }
 
   await app.listen({ port, host: '127.0.0.1' });
   console.log(`🌐 ocforge web UI running at http://localhost:${port}`);

@@ -56,6 +56,30 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     return results;
   });
 
+  app.post('/api/suggest-for-agent', async (request) => {
+    const { agentName, filePath } = request.body as { agentName: string; filePath: string };
+    const configs = discoverConfigs(cwd);
+    const models = await getModels();
+    const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
+    (registry as any).models = models;
+    const engine = new SuggestionEngine(registry);
+
+    // Build a focused config with just this agent
+    const omoFile = configs.omo.find((c) => c.path === filePath);
+    if (!omoFile || !omoFile.data.agents?.[agentName]) {
+      return { suggestion: null, error: 'Agent not found' };
+    }
+
+    const focusedConfig = {
+      opencode: configs.opencode,
+      omo: [{ ...omoFile, data: { agents: { [agentName]: omoFile.data.agents[agentName] } } }],
+    };
+
+    const suggestions = engine.generate(focusedConfig);
+    const match = suggestions.find((s) => s.targetName === agentName);
+    return { suggestion: match || null };
+  });
+
   app.post('/api/apply', async (request) => {
     const { changes } = request.body as { changes: Change[] };
     const writer = new JSONCWriter();

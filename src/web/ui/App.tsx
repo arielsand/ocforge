@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Wrench, Brain, Save, Trash2, Plus, RefreshCw, Cpu, Server, Zap, Eye, X, Check, AlertTriangle, Info, ChevronDown, ChevronRight, Loader2, Sparkles, GitBranch, Layers, Settings, HardDrive, XCircle, ArrowRight
+  Wrench, Brain, Save, Trash2, Plus, RefreshCw, Cpu, Server, Zap, X, Check, AlertTriangle, Info, Loader2, Sparkles, GitBranch, Layers, Settings, HardDrive, XCircle, ArrowRight, ChevronDown
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -239,9 +239,9 @@ export default function App() {
   const [hiddenProviders, setHiddenProviders] = useState<Set<string>>(new Set());
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSnapshotsModal, setShowSnapshotsModal] = useState(false);
   const [snapshotName, setSnapshotName] = useState('');
   const [snapshotDesc, setSnapshotDesc] = useState('');
-  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     (async () => {
@@ -403,15 +403,6 @@ export default function App() {
     setSnapshots(data.snapshots || []);
   };
 
-  const toggleAgentExpanded = (name: string) => {
-    setExpandedAgents((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -446,7 +437,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5 text-zinc-400">
                 <Cpu className="w-4 h-4" />
@@ -465,6 +456,11 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <Button variant="secondary" size="sm" onClick={() => setShowSnapshotsModal(true)}>
+              <HardDrive className="w-4 h-4" />
+              Snapshots
+            </Button>
 
             {pending.length > 0 && (
               <Button onClick={applyChanges} className="bg-emerald-600 hover:bg-emerald-500">
@@ -530,44 +526,6 @@ export default function App() {
           </p>
         </section>
 
-        {/* Snapshots */}
-        <section>
-          <SectionTitle icon={HardDrive} title="Snapshots" subtitle="Save and restore config states" />
-          <div className="flex items-center gap-3 mb-4">
-            <Button onClick={() => setShowSaveModal(true)}>
-              <Save className="w-4 h-4" />
-              Save Snapshot
-            </Button>
-          </div>
-          {snapshots.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {snapshots.map((s) => (
-                <Card key={s.name} className="hover:border-zinc-700 transition-colors">
-                  <CardContent className="py-4">
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0">
-                        <p className="font-medium text-zinc-200 truncate">{s.name}</p>
-                        {s.description && <p className="text-xs text-zinc-500 mt-0.5 truncate">{s.description}</p>}
-                        <p className="text-xs text-zinc-600 mt-1">{new Date(s.createdAt).toLocaleString()}</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 ml-3">
-                        <Button variant="ghost" size="sm" onClick={() => loadSnapshot(s.name)} className="px-2">
-                          <RefreshCw className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteSnapshot(s.name)} className="px-2 text-red-400 hover:text-red-300">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-600">No snapshots saved yet.</p>
-          )}
-        </section>
-
         {/* Configs */}
         {configs?.omo.map((c) => (
           <section key={c.path}>
@@ -582,7 +540,6 @@ export default function App() {
               <SectionTitle icon={Zap} title="Agents" subtitle={`${Object.keys(c.data.agents || {}).length} configured`} />
               <div className="space-y-3">
                 {Object.entries(c.data.agents || {}).map(([name, cfg]: [string, any]) => {
-                  const isExpanded = expandedAgents.has(name);
                   const fallbacks: string[] = (cfg.fallback_models || []).map((f: any) => typeof f === 'string' ? f : f.model);
                   const modelPending = pending.find((p) => p.jsonPath.join('.') === `agents.${name}.model`);
                   const currentValue = modelPending ? modelPending.newValue : (cfg.model ?? '');
@@ -639,12 +596,6 @@ export default function App() {
                                 )}
                                 AI
                               </Button>
-                              <button
-                                onClick={() => toggleAgentExpanded(name)}
-                                className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 transition-colors"
-                              >
-                                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                              </button>
                             </div>
 
                             {provider && (
@@ -667,56 +618,52 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Expanded: Fallbacks */}
-                        {isExpanded && (
-                          <div className="mt-4 pt-4 border-t border-zinc-800">
-                            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Fallback Models</p>
-                            {fallbacks.length === 0 ? (
-                              <p className="text-sm text-zinc-600">No fallbacks configured</p>
-                            ) : (
-                              <div className="space-y-1.5 mb-3">
-                                {fallbacks.map((fb, idx) => (
-                                  <div key={idx} className="flex items-center gap-2 text-sm">
-                                    <span className="text-zinc-600 w-5">{idx + 1}.</span>
-                                    <code className="text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded text-xs">{fb}</code>
-                                    <button
-                                      onClick={() => {
-                                        const newFallbacks = fallbacks.filter((_, i) => i !== idx);
-                                        addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback remove`);
-                                      }}
-                                      className="text-red-400 hover:text-red-300 text-xs ml-auto"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-zinc-500">Add:</span>
-                              <div className="flex-1 max-w-xs">
-                                <Select
-                                  value=""
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      const newFallbacks = [...fallbacks, e.target.value];
-                                      addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback`);
-                                    }
-                                  }}
-                                >
-                                  <option value="">-- select model --</option>
-                                  {modelsByProvider.map(([prov, ms]) => (
-                                    <optgroup key={prov} label={prov}>
-                                      {ms.map((m) => (
-                                        <option key={m.id} value={m.id}>{m.id}</option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </Select>
-                              </div>
+                        {/* Fallbacks — always visible */}
+                        <div className="mt-4 pt-4 border-t border-zinc-800">
+                          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Fallback Models</p>
+                          {fallbacks.length === 0 ? (
+                            <p className="text-sm text-zinc-600">No fallbacks configured</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              {fallbacks.map((fb, idx) => (
+                                <Badge key={idx} className="bg-zinc-800 text-zinc-400 border-zinc-700">
+                                  <GitBranch className="w-3 h-3" />
+                                  {fb}
+                                  <button
+                                    onClick={() => {
+                                      const newFallbacks = fallbacks.filter((_, i) => i !== idx);
+                                      addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback remove`);
+                                    }}
+                                    className="ml-1 text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </Badge>
+                              ))}
                             </div>
+                          )}
+                          <div className="flex items-center gap-2 max-w-xs">
+                            <Plus className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                            <Select
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  const newFallbacks = [...fallbacks, e.target.value];
+                                  addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback`);
+                                }
+                              }}
+                            >
+                              <option value="">-- add fallback model --</option>
+                              {modelsByProvider.map(([prov, ms]) => (
+                                <optgroup key={prov} label={prov}>
+                                  {ms.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.id}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </Select>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </Card>
                   );
@@ -846,13 +793,63 @@ export default function App() {
         )}
       </main>
 
-      {/* Snapshot Modal */}
+      {/* Snapshots Modal */}
+      {showSnapshotsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <HardDrive className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-semibold text-zinc-100">Snapshots</h3>
+                <span className="text-xs text-zinc-500">{snapshots.length} saved</span>
+              </div>
+              <button onClick={() => setShowSnapshotsModal(false)} className="p-1 rounded hover:bg-zinc-800 text-zinc-500 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </CardHeader>
+            <CardContent className="overflow-y-auto space-y-4">
+              <div className="flex items-center gap-3">
+                <Button onClick={() => { setShowSnapshotsModal(false); setShowSaveModal(true); }}>
+                  <Save className="w-4 h-4" />
+                  Save New Snapshot
+                </Button>
+              </div>
+              {snapshots.length > 0 ? (
+                <div className="space-y-2">
+                  {snapshots.map((s) => (
+                    <div key={s.name} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-800">
+                      <div className="min-w-0">
+                        <p className="font-medium text-zinc-200">{s.name}</p>
+                        {s.description && <p className="text-xs text-zinc-500 mt-0.5">{s.description}</p>}
+                        <p className="text-xs text-zinc-600 mt-1">{new Date(s.createdAt).toLocaleString()}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-4">
+                        <Button variant="secondary" size="sm" onClick={() => { setShowSnapshotsModal(false); loadSnapshot(s.name); }}>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Load
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => deleteSnapshot(s.name)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-600">No snapshots saved yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Save Snapshot Modal */}
       {showSaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md">
             <CardHeader>
               <h3 className="font-semibold text-zinc-100">Save Snapshot</h3>
-              <button onClick={() => setShowSaveModal(false)} className="p-1 rounded hover:bg-zinc-800 text-zinc-500">
+              <button onClick={() => setShowSaveModal(false)} className="p-1 rounded hover:bg-zinc-800 text-zinc-500 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </CardHeader>

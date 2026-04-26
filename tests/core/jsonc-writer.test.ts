@@ -51,4 +51,30 @@ describe('jsonc-writer', () => {
     expect(content).toContain('"sisyphus"');
     expect(content).toContain('"model": "x/y"');
   });
+
+  it('verifyChanges returns verified true when changes match', () => {
+    const writer = new JSONCWriter();
+    writer.applyChanges(tmpFile, [
+      { filePath: tmpFile, jsonPath: ['model'], oldValue: 'old/model', newValue: 'new/model' },
+    ]);
+
+    const result = writer.verifyChanges(tmpFile, [
+      { filePath: tmpFile, jsonPath: ['model'], oldValue: 'old/model', newValue: 'new/model' },
+    ]);
+    expect(result.verified).toBe(true);
+    expect(result.mismatches).toHaveLength(0);
+  });
+
+  it('verifyChanges reports mismatches when value differs', () => {
+    const writer = new JSONCWriter();
+    writer.applyChanges(tmpFile, [
+      { filePath: tmpFile, jsonPath: ['model'], oldValue: 'old/model', newValue: 'new/model' },
+    ]);
+
+    const result = writer.verifyChanges(tmpFile, [
+      { filePath: tmpFile, jsonPath: ['model'], oldValue: 'old/model', newValue: 'wrong/model' },
+    ]);
+    expect(result.verified).toBe(false);
+    expect(result.mismatches.length).toBeGreaterThan(0);
+  });
 });

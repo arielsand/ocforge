@@ -107,3 +107,22 @@ export interface DiffResult {
   changes: Change[];
   summary: string;
 }
+
+export interface ModelOwnership {
+  configType: 'opencode' | 'omo';
+  configPath: string;
+  configLevel: 'global' | 'project';
+}
+
+export interface OwnedModel {
+  owner: ModelOwnership;
+  name: string;
+  role: 'agent' | 'category' | 'top-level-model' | 'top-level-small-model';
+  currentModel?: string;
+}
+
+export interface ReloadResult {
+  method: 'opencode-reload' | 'signal-file' | 'prompt-user';
+  success: boolean;
+  message: string;
+}

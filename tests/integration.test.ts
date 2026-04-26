@@ -17,7 +17,7 @@ describe('integration', () => {
     const omoPath = join(omoDir, 'oh-my-openagent.jsonc');
     writeFileSync(omoPath, '{\n  "agents": {\n    "sisyphus": {\n      "model": "anthropic/claude-opus-4-7"\n    }\n  }\n}');
 
-    const configs = discoverConfigs(tmp);
+    const configs = discoverConfigs({ cwd: tmp, globalDir: join(tmp, 'nonexistent-global') });
     const omoFile = configs.omo.find((c) => c.path === omoPath);
     expect(omoFile).toBeDefined();
 

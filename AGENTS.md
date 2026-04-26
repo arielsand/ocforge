@@ -10,17 +10,22 @@
 src/
 ├── index.ts              # OpenCode plugin entry
 ├── cli.ts                # Standalone CLI entry (commander)
-├── types.ts              # Shared domain types
+├── types.ts              # Shared domain types (includes ModelOwnership, OwnedModel, ReloadResult)
 ├── core/
-│   ├── config-loader.ts  # Discover + parse JSONC configs
+│   ├── config-loader.ts  # Discover + parse JSONC configs (DiscoverOptions, discoverModelOwners, fixed precedence)
 │   ├── model-registry.ts # Query opencode models, infer capabilities
 │   ├── suggestion-engine.ts # Role-based model scoring
-│   ├── jsonc-writer.ts   # AST-aware JSONC edits + backups
-│   └── diff-preview.ts   # Human-readable change summaries
+│   ├── jsonc-writer.ts   # AST-aware JSONC edits + backups + verification (verifyChanges)
+│   ├── diff-preview.ts   # Human-readable change summaries
+│   ├── reload-signaler.ts # Post-write reload signal (opencode reload CLI, signal file, user prompt)
+│   ├── version-detector.ts # OmO version detection and bug awareness (#1573)
+│   ├── profile-manager.ts # Save/load/apply profiles of model assignments (with verification + reload)
+│   ├── snapshot-manager.ts # Save/restore full config states
+│   └── ollama-client.ts    # Ollama integration for AI suggestions
 ├── tui/
-│   └── engine.ts         # @clack/prompts interactive menus
+│   └── engine.ts         # @clack/prompts interactive menus (shows ownership + version warnings + reload)
 └── web/
-    ├── server.ts         # Fastify REST API
+    ├── server.ts         # Fastify REST API (with /api/reload, verification in /api/apply)
     └── ui/               # React + Vite frontend
 
 tests/
@@ -48,7 +53,6 @@ tests/
 - Co-located tests: `foo.ts` + `foo.test.ts`
 
 ### Code Style
-- `kebab-case` for file and directory names
 - `camelCase` for variables/functions
 - `PascalCase` for classes/interfaces
 - Prefer explicit types over `any`
@@ -81,11 +85,25 @@ bun run typecheck     # tsc --noEmit
 ## Key Interfaces
 
 ### Config Discovery
-`ConfigLoader` discovers configs in this precedence:
+`ConfigLoader` discovers configs in this precedence (highest first per directory level):
 1. `~/.config/opencode/opencode.json`
 2. `./opencode.json`
 3. `~/.config/opencode/oh-my-openagent.json[c]` (or legacy `oh-my-opencode.json[c]`)
 4. `./.opencode/oh-my-openagent.json[c]` (or legacy)
+
+Legacy `oh-my-opencode.*` files are listed **first** per directory level (index 0 = highest precedence), matching OmO's documented behavior. Deduplication with `break` keeps only the highest-precedence file per level.
+
+#### DiscoverOptions
+`ConfigLoader` accepts an options object instead of a plain `cwd` string:
+```typescript
+interface DiscoverOptions {
+  cwd?: string;       // Working directory for local config search
+  globalDir?: string; // Override for ~/.config/opencode (useful in tests)
+}
+```
+
+#### Model Ownership Discovery
+`discoverModelOwners(options?)` returns `OwnedModel[]` showing which config file owns each model assignment. Used by TUI to display ownership badges.
 
 ### Model Registry
 - Runs `opencode models` to get available models
@@ -104,6 +122,52 @@ The `SuggestionEngine` scores models per agent/category using:
 - Preserves comments, trailing commas, formatting
 - Creates `.bak.YYYY-MM-DDTHH-mm-ss` backups
 - Detects concurrent modification via re-read before write
+- `verifyChanges(filePath, changes)`: re-reads file after write and validates values match. Returns `boolean`.
+
+### Profile Management
+`ProfileManager` saves/loads/appies named profiles of model assignments:
+- `saveProfile(name, changes)`: persists a named profile
+- `loadProfile(name)`: retrieves a profile
+- `applyProfile(profile)`: applies changes from a profile (with `verifyChanges` + `signalReload`)
+- Returns `{ applied: boolean; verified: boolean }`
+
+### Reload Signaling
+After applying changes, `ReloadSignaler.signalReload()` ensures OpenCode picks up the new config:
+1. Tries `opencode reload` CLI command
+2. Falls back to writing `~/.config/opencode/.reload-requested` signal file
+3. Falls back to prompting user to restart
+
+`formatReloadMessage()` provides user-facing output for TUI.
+
+### Version Detection
+`VersionDetector` detects OmO version and known bugs:
+- `detectOmOVersion()`: returns version string or `unknown`
+- `hasBug1573Fix()`: checks if OmO has the `uiSelectedModel` cache bug fix (conservatively returns `false`)
+- `formatVersionWarning()`: returns warning message for TUI when bug is present
+
+### Ollama Integration
+`OllamaClient` queries local Ollama for AI-powered model suggestions:
+- `askForSuggestion(agentRole, availableModels)`: returns suggested model ID
+- Falls back gracefully when Ollama is unavailable
+
+### Snapshot Management
+`SnapshotManager` saves and restores full config states:
+- `saveSnapshot(name)`: captures current state of all discovered configs
+- `listSnapshots()`: returns saved snapshot names with timestamps
+- `restoreSnapshot(name)`: applies a saved snapshot (with verification + reload)
+
+## Known Config Propagation Issues
+
+OpenCode and OmO have known issues where config changes may not take effect immediately:
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| Startup cache | OpenCode reads config once at startup | Must `/reload` or restart |
+| Hot reload limitations | OmO `experimental.hot_reload: true` doesn't reload `disabled_hooks`; existing sessions keep stale models | Known limitation |
+| Precedence bug #472 | `builtinAgents` can override user config | Partially fixed |
+| Model format bug #641 | Runtime passes string where SDK expects object | Unfixed |
+| Cache bug #1573 | `uiSelectedModel` overriding `userModel` | Fixed Feb 2026, PR #1578 |
+| Dual config files | `opencode.json` + `oh-my-openagent.json` separate; changes to one don't affect agents in the other | By design |
 
 ## When Adding Features
 

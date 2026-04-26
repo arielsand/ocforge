@@ -1,10 +1,12 @@
 import { intro, outro, select, confirm, isCancel, multiselect, text } from '@clack/prompts';
 import type { ConfigState, Change } from '../types';
-import { discoverConfigs } from '../core/config-loader';
+import { discoverConfigs, discoverModelOwners } from '../core/config-loader';
 import { ModelRegistry } from '../core/model-registry';
 import { SuggestionEngine } from '../core/suggestion-engine';
 import { JSONCWriter } from '../core/jsonc-writer';
 import { generateDiff } from '../core/diff-preview';
+import { signalReload, formatReloadMessage } from '../core/reload-signaler';
+import { detectOmOVersion, formatVersionWarning } from '../core/version-detector';
 import {
   listProfiles,
   saveProfile,
@@ -15,7 +17,14 @@ import {
 export async function runTUI(cwd?: string, dryRun = false): Promise<void> {
   intro('🔧 ocforge — OpenCode Model Configurator');
 
-  const configs = discoverConfigs(cwd);
+  const versionInfo = detectOmOVersion();
+  const versionWarning = formatVersionWarning(versionInfo);
+  if (versionWarning) {
+    console.log(versionWarning);
+    console.log();
+  }
+
+  const configs = discoverConfigs({ cwd });
   const registry = new ModelRegistry();
   try {
     await registry.refresh();
@@ -106,6 +115,7 @@ function getOpenCodeData(file: ConfigState['opencode'][number]) {
 }
 
 async function runBrowse(configs: ConfigState, registry: ModelRegistry, dryRun = false): Promise<void> {
+  const ownedModels = discoverModelOwners();
   const fileChoices = [
     ...configs.opencode.map((c) => ({ value: c.path, label: `OpenCode (${c.level}): ${c.path}` })),
     ...configs.omo.map((c) => ({ value: c.path, label: `OmO (${c.level}): ${c.path}` })),
@@ -134,6 +144,14 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry, dryRun =
 
   if (isOmO) {
     const omoData = getOmOData(file as ConfigState['omo'][number]);
+
+    console.log('\n📋 Model assignments in this file:');
+    const fileOwned = ownedModels.filter((m) => m.owner.configPath === file.path);
+    for (const owned of fileOwned) {
+      console.log(`  • ${owned.name} (${owned.role}): ${owned.currentModel ?? 'none'}`);
+    }
+    console.log();
+
     const agentOrCategory = await select({
       message: 'Edit agents or categories?',
       options: [
@@ -156,6 +174,14 @@ async function runBrowse(configs: ConfigState, registry: ModelRegistry, dryRun =
     oldValue = collection?.[name as string]?.model;
   } else {
     const ocData = getOpenCodeData(file as ConfigState['opencode'][number]);
+
+    console.log('\n📋 Model assignments in this file:');
+    const fileOwned = ownedModels.filter((m) => m.owner.configPath === file.path);
+    for (const owned of fileOwned) {
+      console.log(`  • ${owned.name} (${owned.role}): ${owned.currentModel ?? 'none'}`);
+    }
+    console.log();
+
     const field = await select({
       message: 'Select field:',
       options: [
@@ -216,7 +242,18 @@ async function applyChangesWithPreview(changes: Change[], dryRun = false): Promi
   for (const [path, fileChanges] of byFile) {
     writer.applyChanges(path, fileChanges, true);
     console.log(`✅ Updated ${path}`);
+
+    const verification = writer.verifyChanges(path, fileChanges);
+    if (!verification.verified) {
+      console.log(`⚠️  Verification failed for ${path}:`);
+      for (const m of verification.mismatches) {
+        console.log(`   - ${m}`);
+      }
+    }
   }
+
+  const reloadResult = await signalReload();
+  console.log(formatReloadMessage(reloadResult));
 }
 
 async function runProfiles(configs: ConfigState, dryRun = false): Promise<void> {

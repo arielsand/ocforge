@@ -90,6 +90,10 @@ profilesCmd
       if (result.changes.length > 0) {
         console.log(`   ${result.changes.length} change(s) applied to ${omoFile.path}`);
       }
+      if (!result.verified) {
+        console.log('⚠️  Verification: some changes may not have been applied correctly.');
+      }
+      console.log('⚠️  Run /reload in OpenCode or restart to apply changes.');
     } else {
       console.error(`❌ ${result.message}`);
       process.exit(1);

@@ -16,6 +16,7 @@ import {
   renameProfile,
   applyProfile,
 } from '../core/profile-manager';
+import { signalReload } from '../core/reload-signaler';
 import type { Change } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
@@ -37,7 +38,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
   const app = Fastify({ logger: false });
 
   app.get('/api/configs', async () => {
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     return {
       opencode: configs.opencode.map((c) => ({ path: c.path, level: c.level, type: c.type, data: c.data })),
       omo: configs.omo.map((c) => ({ path: c.path, level: c.level, type: c.type, data: c.data })),
@@ -49,7 +50,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
   });
 
   app.get('/api/suggestions', async () => {
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     const models = await getModels();
     const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
     registry.seed(models);
@@ -68,7 +69,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
 
   app.post('/api/suggest-for-agent', async (request) => {
     const { agentName, filePath } = request.body as { agentName: string; filePath: string };
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     const models = await getModels();
     const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
     registry.seed(models);
@@ -156,7 +157,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
 
   app.post('/api/snapshots', async (request) => {
     const { name, description } = request.body as { name: string; description?: string };
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     const snapshotConfigs = [...configs.opencode, ...configs.omo].map((c) => ({
       path: c.path,
       type: c.type,
@@ -175,7 +176,8 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     for (const cfg of snapshot.configs) {
       writeFileSync(cfg.path, cfg.content, 'utf-8');
     }
-    return { success: true, restored: snapshot.configs.map((c) => c.path) };
+    const reloadResult = await signalReload();
+    return { success: true, restored: snapshot.configs.map((c) => c.path), reload: reloadResult };
   });
 
   app.delete('/api/snapshots/:name', async (request) => {
@@ -191,7 +193,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
 
   app.post('/api/profiles', async (request) => {
     const { name, description } = request.body as { name: string; description?: string };
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     const omoFile = configs.omo[0];
     if (!omoFile) {
       return { success: false, error: 'No OmO config found' };
@@ -202,7 +204,7 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
 
   app.post('/api/profiles/:name/apply', async (request) => {
     const { name } = request.params as { name: string };
-    const configs = discoverConfigs(cwd);
+    const configs = discoverConfigs({ cwd });
     const omoFile = configs.omo[0];
     if (!omoFile) {
       return { success: false, error: 'No OmO config found' };
@@ -237,10 +239,26 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
       arr.push(c);
       byFile.set(c.filePath, arr);
     }
+    const modified: string[] = [];
+    const verificationErrors: string[] = [];
     for (const [path, fileChanges] of byFile) {
       writer.applyChanges(path, fileChanges, true);
+      modified.push(path);
+
+      const verification = writer.verifyChanges(path, fileChanges);
+      if (!verification.verified) {
+        verificationErrors.push(...verification.mismatches);
+      }
     }
-    return { success: true, modified: [...byFile.keys()] };
+
+    const reloadResult = await signalReload();
+
+    return { success: true, modified, verificationErrors, reload: reloadResult };
+  });
+
+  app.post('/api/reload', async () => {
+    const result = await signalReload();
+    return result;
   });
 
   // Serve static frontend build

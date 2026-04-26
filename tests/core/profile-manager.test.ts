@@ -137,6 +137,7 @@ describe('ProfileManager', () => {
         applyChanges: (_path: string, _changes: Change[], _backup: boolean) => {
           // no-op
         },
+        verifyChanges: (_path: string, _changes: Change[]) => ({ verified: true, mismatches: [] }),
       };
 
       const currentConfig: OmOConfig = {
@@ -169,9 +170,10 @@ describe('ProfileManager', () => {
         applyChanges: (_path: string, _changes: Change[], _backup: boolean) => {
           throw new Error('Should not be called');
         },
+        verifyChanges: (_path: string, _changes: Change[]) => ({ verified: true, mismatches: [] }),
       };
 
-      const result = applyProfile('no-change', '/fake/path.json', sampleConfig, mockWriter as JSONCWriter);
+      const result = applyProfile('no-change', '/fake/path.json', sampleConfig, mockWriter as unknown as JSONCWriter);
 
       expect(result.success).toBe(true);
       expect(result.changes).toHaveLength(0);

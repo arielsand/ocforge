@@ -1,6 +1,6 @@
 {
   "name": "ocforge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCode Agent & Model Configurator — reconfigure AI models/providers across OpenCode and Oh My OpenAgent",
   "type": "module",
   "bin": {

@@ -3,6 +3,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { AgentConfig, CategoryConfig, OmOConfig } from '../types';
 import { JSONCWriter } from './jsonc-writer';
+import { signalReload } from './reload-signaler';
 import type { Change } from '../types';
 
 export interface ProfileAssignment {
@@ -205,10 +206,10 @@ export function applyProfile(
   configPath: string,
   currentConfig: OmOConfig,
   writer = new JSONCWriter()
-): { success: boolean; changes: Change[]; message: string } {
+): { success: boolean; changes: Change[]; message: string; verified: boolean } {
   const profile = loadProfile(profileName);
   if (!profile) {
-    return { success: false, changes: [], message: `Profile "${profileName}" not found` };
+    return { success: false, changes: [], message: `Profile "${profileName}" not found`, verified: true };
   }
 
   const changes: Change[] = [];
@@ -226,10 +227,15 @@ export function applyProfile(
   }
 
   if (changes.length === 0) {
-    return { success: true, changes: [], message: 'Profile already matches current config' };
+    return { success: true, changes: [], message: 'Profile already matches current config', verified: true };
   }
 
   writer.applyChanges(configPath, changes, true);
+
+  const verification = writer.verifyChanges(configPath, changes);
+
+  // Fire-and-forget reload signal (async, don't block sync function)
+  signalReload().then(() => {}).catch(() => {});
 
   const agentCount = Object.keys(profile.assignments.agents).length;
   const catCount = Object.keys(profile.assignments.categories).length;
@@ -237,5 +243,6 @@ export function applyProfile(
     success: true,
     changes,
     message: `Applied profile "${profileName}" (${agentCount} agents, ${catCount} categories)`,
+    verified: verification.verified,
   };
 }

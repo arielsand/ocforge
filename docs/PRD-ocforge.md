@@ -1,6 +1,6 @@
 # Product Requirements Document: ocforge
 
-**Version:** 1.0  
+**Version:** 1.1
 **Date:** 2026-04-26  
 **Status:** Shipped  
 **Author:** AI-assisted development  
@@ -127,6 +127,22 @@ This friction discourages experimentation with new models and increases the time
 │                   │ JSONCWriter │                          │
 │                   │ + Diff      │                          │
 │                   └─────────────┘                          │
+│                            │                               │
+│         ┌──────────────────┼──────────────────┐            │
+│         ▼                  ▼                  ▼            │
+│  ┌─────────────┐   ┌──────────────┐   ┌───────────────┐  │
+│  │ReloadSignaler│  │VersionDetector│  │ProfileManager │  │
+│  └─────────────┘   └──────────────┘   └───────────────┘  │
+│         │                  │                  │            │
+│         └──────────────────┼──────────────────┘            │
+│                            ▼                               │
+│                   ┌─────────────┐                          │
+│                   │SnapshotManager│                       │
+│                   └─────────────┘                          │
+│                            │                               │
+│                   ┌─────────────┐                          │
+│                   │ OllamaClient │                         │
+│                   └─────────────┘                          │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -140,6 +156,11 @@ This friction discourages experimentation with new models and increases the time
 | `SuggestionEngine` | Recommends models per agent/category based on role scoring |
 | `JSONCWriter` | AST-aware edits with concurrent-modification detection & backups |
 | `DiffPreview` | Human-readable change summaries |
+| `ReloadSignaler` | Signals OpenCode/OmO to reload config after changes (CLI command, signal file, user prompt) |
+| `VersionDetector` | Detects OmO version, warns about known bugs that may prevent config propagation |
+| `ProfileManager` | Save/load/apply named profiles of model assignments with verification and reload |
+| `SnapshotManager` | Save/restore full config states for quick switching between configurations |
+| `OllamaClient` | Local Ollama integration for AI-powered model suggestions |
 | `TUIEngine` | `@clack/prompts` interactive menus |
 | `WebServer` | Fastify REST API serving React frontend |
 
@@ -169,7 +190,9 @@ Main Menu
    - Creates timestamped backup
    - Re-reads file to detect concurrent modification
    - Applies AST-aware edits
-3. Success confirmation
+3. **Verification**: `JSONCWriter.verifyChanges()` re-reads the file and confirms values match
+4. **Reload**: `ReloadSignaler.signalReload()` triggers OpenCode/OmO to pick up changes
+5. Success confirmation
 
 ---
 
@@ -186,19 +209,60 @@ Main Menu
 
 ---
 
-## 10. CLI Interface
+## 9b. Config Propagation
+
+After ocforge writes config changes, the changes may not immediately take effect in running OpenCode/OmO instances. ocforge handles this with a multi-strategy reload signal:
+
+| Strategy | Method | Reliability |
+|----------|--------|------------|
+| **CLI reload** | Runs `opencode reload` command | High — if opencode is in PATH and supports it |
+| **Signal file** | Creates `~/.config/opencode/.reload-requested` | Medium — only works if OmO `hot_reload: true` is enabled |
+| **User prompt** | Shows message directing user to `/reload` | Fallback — always works |
+
+---
+
+## 10. Model Ownership
+
+Config changes may live in different files:
+- `opencode.json` controls: top-level model, small_model, and agent overrides (build, plan, architect, etc.)
+- `oh-my-openagent.json[c]` controls: OmO agents (sisyphus, explore, oracle, etc.) and categories (quick, deep, etc.)
+
+The TUI and web UI display which config file owns each model assignment, so users know which file to edit.
+
+### Ownership Display
+
+`discoverModelOwners()` returns an `OwnedModel[]` showing:
+- Which config file (`opencode` or `omo`) owns each model
+- The config file path (global or project level)
+- The role of the model (agent, category, top-level-model, top-level-small-model)
+
+---
+
+## 11. CLI Interface
 
 ```bash
 ocforge                    # Launch interactive TUI
+ocforge --tui              # Launch rich dashboard TUI (3-pane layout)
 ocforge --web              # Launch web UI at localhost:3456
 ocforge --config ./myproj  # Use custom config directory
 ocforge --dry-run          # Show diff without writing
 ocforge --help             # Show usage
 ```
 
+### Profile Commands
+
+```bash
+ocforge profiles list                      # List all saved profiles
+ocforge profiles save <name>               # Save current assignments as a profile
+ocforge profiles save <name> -d "desc"     # Save with a description
+ocforge profiles apply <name>              # Apply a profile (with verification + reload)
+ocforge profiles rename <old> <new>       # Rename a profile
+ocforge profiles delete <name>             # Delete a profile
+```
+
 ---
 
-## 11. Plugin Interface
+## 12. Plugin Interface
 
 Add to `opencode.json`:
 ```json
@@ -211,7 +275,7 @@ Then run `/config-models` inside OpenCode.
 
 ---
 
-## 12. Web UI Endpoints
+## 13. Web UI Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -223,7 +287,7 @@ Then run `/config-models` inside OpenCode.
 
 ---
 
-## 13. Error Handling
+## 14. Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
@@ -237,18 +301,31 @@ Then run `/config-models` inside OpenCode.
 
 ---
 
-## 14. Testing
+## 15. Testing
 
 | Layer | Count | Coverage |
 |-------|-------|----------|
-| Unit tests | 13 | ConfigLoader, ModelRegistry, SuggestionEngine, JSONCWriter, DiffPreview |
-| Integration test | 1 | Full pipeline: discover → suggest → diff → apply |
+| Unit tests | 38 | ConfigLoader, ModelRegistry, SuggestionEngine, JSONCWriter, DiffPreview, ReloadSignaler, VersionDetector, ProfileManager, SnapshotManager |
+| Integration test | 1 | Full pipeline: discover → suggest → diff → apply → verify |
 | TUI/Web tests | 2 | Placeholder (interactive, tested manually) |
-| **Total** | **14 tests** | **All passing** |
+| **Total** | **42 tests** | **All passing** |
 
 ---
 
-## 15. Tech Stack
+## 16. Known Issues
+
+| Issue | Status | Impact | Workaround |
+|-------|--------|--------|------------|
+| OpenCode reads config once at startup | OpenCode design | Changes don't take effect until reload | `/reload` or restart |
+| OmO hot_reload limitations | OmO bug | `disabled_hooks` and existing session models not reloaded | Restart OmO |
+| OmO precedence bug (#472) | Partially fixed | builtinAgents may override user config | Upgrade OmO |
+| OmO model format bug (#641) | Unfixed | Runtime passes string where SDK expects object | N/A (upstream) |
+| OmO cache bug (#1573) | Fixed (PR #1578) | `uiSelectedModel` overriding `userModel` | Upgrade OmO to latest |
+| Two conflicting config files | By design | Changes to `opencode.json` don't affect `oh-my-openagent.json` agents | Edit both files |
+
+---
+
+## 17. Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
@@ -263,17 +340,21 @@ Then run `/config-models` inside OpenCode.
 
 ---
 
-## 16. Success Criteria
+## 18. Success Criteria
 
 - [x] User can run `/config-models` in OpenCode and change a model without typing the ID
 - [x] User can run `ocforge --web` and edit models via dropdowns
 - [x] Smart Update suggests meaningful changes when new models are available
 - [x] All changes preserve JSONC comments and create backups
 - [x] Tool works on macOS, Linux, and Windows (where Bun/OpenCode run)
+- [x] Post-write reload signal attempts to propagate config changes to running OpenCode
+- [x] Change verification confirms writes succeeded before finishing
+- [x] Model ownership display helps users understand which config file to edit
+- [x] Profile commands allow saving and applying model configurations
 
 ---
 
-## 17. Future Roadmap
+## 19. Future Roadmap
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
@@ -286,7 +367,18 @@ Then run `/config-models` inside OpenCode.
 
 ---
 
-## 18. Changelog
+## 20. Changelog
+
+### v0.2.0 — 2026-04-26
+- Added post-write reload signal (`opencode reload` CLI → signal file → user prompt)
+- Added change verification (`verifyChanges`) after config writes
+- Added model ownership display in TUI (which config file owns each agent)
+- Added OmO version detection and bug warnings (#1573)
+- Added profile management (`profiles list/save/apply/rename/delete`)
+- Added snapshot save/restore
+- Added Ollama integration for AI suggestions
+- Fixed OmO config discovery precedence (legacy `oh-my-opencode` wins over `oh-my-openagent`)
+- Fixed ConfigLoader API to accept `DiscoverOptions` for test isolation
 
 ### v0.1.0 — 2026-04-26
 - Initial release

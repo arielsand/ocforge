@@ -582,8 +582,14 @@ function AgentRow({
 
   return (
     <div style={{ marginBottom: 20, padding: 16, background: '#fafafa', borderRadius: 6, border: '1px solid #eee' }}>
+      <div style={{ marginBottom: 4 }}>
+        <label style={{ minWidth: 120, fontWeight: 600, fontSize: 15 }}>{name}</label>
+      </div>
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 8, marginLeft: 2 }}>
+        {getAgentRoleDescription(name)}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <label style={{ minWidth: 120, fontWeight: 600, fontSize: 15 }}>{name}:</label>
+        <label style={{ minWidth: 120 }}></label>
         <ModelSelect
           value={modelPending ? modelPending.newValue : (cfg.model ?? '')}
           modelsByProvider={modelsByProvider}

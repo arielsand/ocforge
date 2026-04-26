@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { runTUI } from './tui/engine';
-import { runBtopTUI } from './tui/btop';
+import { runExtendedTUI } from './tui/extended';
 import { startWebServer } from './web/server';
 
 const program = new Command();
@@ -20,7 +20,7 @@ program
     if (options.web) {
       await startWebServer(3456, options.config);
     } else if (options.tui) {
-      runBtopTUI();
+      runExtendedTUI();
     } else {
       await runTUI(options.config, options.dryRun);
     }

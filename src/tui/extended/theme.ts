@@ -1,4 +1,4 @@
-// btop-inspired color theme for ocforge TUI
+// Extended TUI color theme for ocforge (dashboard mode)
 export const THEME = {
   bg: '#1a1a2e',
   border: '#00bcd4',

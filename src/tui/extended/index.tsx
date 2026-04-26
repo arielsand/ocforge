@@ -1,7 +1,7 @@
 import { render } from 'ink';
 import App from './app';
 
-export function runBtopTUI(): void {
+export function runExtendedTUI(): void {
   // Check if stdin is a TTY (Ink requires raw mode)
   if (!process.stdin.isTTY) {
     console.error('\x1b[31mError:\x1b[0m The rich TUI requires an interactive terminal.');

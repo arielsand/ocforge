@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name('ocforge')
   .description('OpenCode Agent & Model Configurator')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .option('--config <path>', 'custom config directory')

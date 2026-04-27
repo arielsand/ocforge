@@ -122,7 +122,7 @@ export interface OwnedModel {
 }
 
 export interface ReloadResult {
-  method: 'opencode-reload' | 'signal-file' | 'prompt-user';
+  method: 'sigusr2' | 'signal-file' | 'prompt-user';
   success: boolean;
   message: string;
 }

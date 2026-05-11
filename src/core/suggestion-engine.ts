@@ -54,6 +54,18 @@ export class SuggestionEngine {
             reason: `Better orchestrator model: ${best.id} (${best.priceTier})`,
             confidence: DEFAULT_OPENCODE_CONFIDENCE,
           });
+        } else if (!best) {
+          const replacement = this.findReplacementForMissingModel(ocData.model, models);
+          if (replacement) {
+            suggestions.push({
+              targetType: 'missing-model',
+              targetName: 'model',
+              currentValue: ocData.model,
+              suggestedValue: replacement.suggested.id,
+              reason: replacement.reason,
+              confidence: 0.7,
+            });
+          }
         }
       }
       if (ocData.small_model) {
@@ -67,6 +79,18 @@ export class SuggestionEngine {
             reason: `Better small model: ${best.id} (${best.priceTier})`,
             confidence: DEFAULT_OPENCODE_CONFIDENCE,
           });
+        } else if (!best) {
+          const replacement = this.findReplacementForMissingModel(ocData.small_model, models);
+          if (replacement) {
+            suggestions.push({
+              targetType: 'missing-model',
+              targetName: 'small_model',
+              currentValue: ocData.small_model,
+              suggestedValue: replacement.suggested.id,
+              reason: replacement.reason,
+              confidence: 0.7,
+            });
+          }
         }
       }
     }
@@ -90,6 +114,18 @@ export class SuggestionEngine {
             reason: `${role.capabilityNeed} fit: ${best.id} (${best.priceTier})`,
             confidence: DEFAULT_AGENT_CONFIDENCE,
           });
+        } else if (!best) {
+          const replacement = this.findReplacementForMissingModel(currentModel, models);
+          if (replacement) {
+            suggestions.push({
+              targetType: 'missing-model',
+              targetName: name,
+              currentValue: currentModel,
+              suggestedValue: replacement.suggested.id,
+              reason: replacement.reason,
+              confidence: 0.7,
+            });
+          }
         }
       }
 
@@ -107,6 +143,18 @@ export class SuggestionEngine {
             reason: `${role.capabilityNeed} fit for category: ${best.id} (${best.priceTier})`,
             confidence: 0.75,
           });
+        } else if (!best) {
+          const replacement = this.findReplacementForMissingModel(currentModel, models);
+          if (replacement) {
+            suggestions.push({
+              targetType: 'missing-model',
+              targetName: name,
+              currentValue: currentModel,
+              suggestedValue: replacement.suggested.id,
+              reason: replacement.reason,
+              confidence: 0.7,
+            });
+          }
         }
       }
     }

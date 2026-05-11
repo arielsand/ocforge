@@ -19,6 +19,18 @@ interface PendingChange {
   display: string;
 }
 
+interface MissingModelSuggestion {
+  targetType: string;
+  targetName: string;
+  currentValue: string;
+  suggestedValue: string;
+  reason: string;
+  confidence: number;
+  configPath: string;
+  jsonPath: (string | number)[];
+  display: string;
+}
+
 interface SuggestionResponse {
   suggestion?: {
     targetName: string;
@@ -245,6 +257,67 @@ function Alert({ type, children }: { type: 'info' | 'success' | 'warning' | 'err
   );
 }
 
+function MissingModelsAlert({
+  missingModels,
+  onAccept,
+  onAcceptAll,
+  onDismiss,
+}: {
+  missingModels: MissingModelSuggestion[];
+  onAccept: (s: MissingModelSuggestion) => void;
+  onAcceptAll: () => void;
+  onDismiss: (key: string) => void;
+}) {
+  if (missingModels.length === 0) return null;
+
+  return (
+    <Card className="border-amber-500/30">
+      <CardContent>
+        <div className="flex items-center gap-2 mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-400" />
+          <span className="text-amber-200 font-medium">
+            {missingModels.length} model reference{missingModels.length > 1 ? 's' : ''} point{missingModels.length === 1 ? 's' : ''} to unavailable providers/models
+          </span>
+        </div>
+        <div className="space-y-3">
+          {missingModels.map((s) => {
+            const key = `${s.configPath}::${s.jsonPath.join('.')}`;
+            return (
+              <div key={key} className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span className="text-sm font-medium text-zinc-200">{s.targetName}</span>
+                    <Badge className="bg-zinc-800 text-zinc-400 border-zinc-700">{s.currentValue}</Badge>
+                    <ArrowRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20">{s.suggestedValue}</Badge>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1">{s.reason}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-4">
+                  <Button variant="primary" size="sm" onClick={() => onAccept(s)}>
+                    <Check className="w-3.5 h-3.5" />
+                    Accept
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => onDismiss(key)}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button onClick={onAcceptAll} className="bg-emerald-600 hover:bg-emerald-500">
+            <Check className="w-4 h-4" />
+            Accept All ({missingModels.length})
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SectionTitle({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle?: string }) {
   return (
     <div className="flex items-center gap-3 mb-6">
@@ -283,16 +356,19 @@ export default function App() {
   const [profileDesc, setProfileDesc] = useState('');
   const [profileAction, setProfileAction] = useState<'save' | 'rename'>('save');
   const [renameTarget, setRenameTarget] = useState('');
+  const [missingModels, setMissingModels] = useState<MissingModelSuggestion[]>([]);
+  const [dismissedMissing, setDismissedMissing] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     (async () => {
       try {
-        const [cfgRes, modelsRes, ollamaRes, snapshotsRes, profilesRes] = await Promise.all([
+        const [cfgRes, modelsRes, ollamaRes, snapshotsRes, profilesRes, validateRes] = await Promise.all([
           fetch('/api/configs'),
           fetch('/api/models'),
           fetch('/api/ollama/models'),
           fetch('/api/snapshots'),
           fetch('/api/profiles'),
+          fetch('/api/validate'),
         ]);
         const cfgData = await cfgRes.json();
         const modelsData = await modelsRes.json();
@@ -304,6 +380,9 @@ export default function App() {
         setSnapshots(snapshotsData.snapshots || []);
         const profilesData = await profilesRes.json();
         setProfiles(profilesData.profiles || []);
+
+        const validateData = await validateRes.json();
+        setMissingModels(validateData.missingModels || []);
 
         if (ollamaData.available) {
           setOllamaAvailable(true);
@@ -344,6 +423,12 @@ export default function App() {
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [visibleModels]);
 
+  const visibleMissingModels = useMemo(() => {
+    return missingModels.filter(
+      (s) => !dismissedMissing.has(`${s.configPath}::${s.jsonPath.join('.')}`)
+    );
+  }, [missingModels, dismissedMissing]);
+
   const toggleProvider = (provider: string) => {
     setHiddenProviders((prev) => {
       const next = new Set(prev);
@@ -351,6 +436,31 @@ export default function App() {
       else next.add(provider);
       return next;
     });
+  };
+
+  const handleAcceptMissing = (s: MissingModelSuggestion) => {
+    addChange(s.configPath, s.jsonPath, s.currentValue, s.suggestedValue, s.display);
+    setDismissedMissing((prev) => new Set([...prev, `${s.configPath}::${s.jsonPath.join('.')}`]));
+  };
+
+  const handleAcceptAllMissing = () => {
+    const visible = missingModels.filter(
+      (s) => !dismissedMissing.has(`${s.configPath}::${s.jsonPath.join('.')}`)
+    );
+    for (const s of visible) {
+      addChange(s.configPath, s.jsonPath, s.currentValue, s.suggestedValue, s.display);
+    }
+    setDismissedMissing((prev) => {
+      const next = new Set(prev);
+      for (const s of visible) {
+        next.add(`${s.configPath}::${s.jsonPath.join('.')}`);
+      }
+      return next;
+    });
+  };
+
+  const handleDismissMissing = (key: string) => {
+    setDismissedMissing((prev) => new Set([...prev, key]));
   };
 
   const addChange = (filePath: string, jsonPath: (string | number)[], oldValue: unknown, newValue: unknown, display: string) => {
@@ -610,6 +720,13 @@ export default function App() {
             </CardContent>
           </Card>
         )}
+
+        <MissingModelsAlert
+          missingModels={visibleMissingModels}
+          onAccept={handleAcceptMissing}
+          onAcceptAll={handleAcceptAllMissing}
+          onDismiss={handleDismissMissing}
+        />
 
         {/* Provider Filter */}
         <section>

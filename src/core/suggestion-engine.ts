@@ -1,5 +1,5 @@
 import type { ModelInfo, ConfigState, Suggestion, OmOConfig, OpenCodeConfig } from '../types';
-import { ModelRegistry } from './model-registry';
+import { ModelRegistry, inferCapabilities, inferPriceTier } from './model-registry';
 
 interface AgentRole {
   capabilityNeed: 'orchestrator' | 'reasoning' | 'fast' | 'vision' | 'general';
@@ -143,5 +143,54 @@ export class SuggestionEngine {
 
     scored.sort((a, b) => b.score - a.score);
     return scored[0]?.model;
+  }
+
+  private findReplacementForMissingModel(
+    configuredModelId: string,
+    availableModels: ModelInfo[]
+  ): { suggested: ModelInfo; reason: string } | undefined {
+    if (availableModels.length === 0) return undefined;
+
+    const configuredProvider = configuredModelId.split('/')[0];
+    const targetTier = inferPriceTier(configuredModelId);
+    const targetCaps = inferCapabilities(configuredModelId);
+
+    const sameProvider = availableModels.filter((m) => m.provider === configuredProvider);
+    if (sameProvider.length > 0) {
+      const sameTier = sameProvider.filter((m) => m.priceTier === targetTier);
+      if (sameTier.length > 0) {
+        return {
+          suggested: sameTier[0],
+          reason: `Same provider and similar tier: ${sameTier[0].id}`,
+        };
+      }
+      return {
+        suggested: sameProvider[0],
+        reason: `Same provider available: ${sameProvider[0].id}`,
+      };
+    }
+
+    let best: ModelInfo | undefined;
+    let bestScore = -1;
+    for (const m of availableModels) {
+      let score = 0;
+      if (m.priceTier === targetTier) score += 3;
+      if (targetCaps.multimodal && m.capabilities.multimodal) score += 2;
+      if (targetCaps.thinking && m.capabilities.thinking) score += 2;
+      if (targetCaps.reasoning && m.capabilities.reasoning) score += 2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
+      }
+    }
+
+    if (best) {
+      return {
+        suggested: best,
+        reason: `Provider '${configuredProvider}' not available. Best match: ${best.id} (${best.priceTier})`,
+      };
+    }
+
+    return undefined;
   }
 }

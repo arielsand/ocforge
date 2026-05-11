@@ -15,7 +15,7 @@ const DEFAULT_RUNNER: ShellRunner = async (cmd) => {
   return { stdout, stderr, exitCode };
 };
 
-function inferCapabilities(modelId: string): ModelInfo['capabilities'] {
+export function inferCapabilities(modelId: string): ModelInfo['capabilities'] {
   const lower = modelId.toLowerCase();
   return {
     multimodal: lower.includes('vision') || lower.includes('gemini') || lower.includes('gpt-4') || lower.includes('4o'),
@@ -25,7 +25,7 @@ function inferCapabilities(modelId: string): ModelInfo['capabilities'] {
   };
 }
 
-function inferPriceTier(modelId: string): ModelInfo['priceTier'] {
+export function inferPriceTier(modelId: string): ModelInfo['priceTier'] {
   const lower = modelId.toLowerCase();
   // Cheapest
   if (lower.includes('nano')) return 'nano';

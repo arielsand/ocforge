@@ -56,4 +56,127 @@ describe('suggestion-engine', () => {
     const suggestions = engine.generate(configs);
     expect(suggestions).toHaveLength(0);
   });
+
+  it('suggests replacement when configured provider does not exist', async () => {
+    const engine = await createEngine(
+      'anthropic/claude-sonnet-4\nopenai/gpt-4o\ngoogle/gemini-2-flash'
+    );
+    const configs: ConfigState = {
+      opencode: [],
+      omo: [{
+        path: '/tmp/omo.json',
+        level: 'project',
+        type: 'omo',
+        content: '',
+        data: {
+          agents: {
+            sisyphus: { model: 'nonexistent/some-model' },
+          },
+        },
+      }],
+    };
+
+    const suggestions = engine.generate(configs);
+    const missing = suggestions.find((s) => s.targetType === 'missing-model' && s.targetName === 'sisyphus');
+    expect(missing).toBeDefined();
+    expect(missing!.currentValue).toBe('nonexistent/some-model');
+    expect(missing!.suggestedValue).toMatch(/^(anthropic|openai|google)\//);
+    expect(missing!.confidence).toBe(0.7);
+  });
+
+  it('suggests same-provider replacement when model removed but provider exists', async () => {
+    const engine = await createEngine(
+      'anthropic/claude-sonnet-4\nanthropic/claude-haiku-3\nopenai/gpt-4o'
+    );
+    const configs: ConfigState = {
+      opencode: [],
+      omo: [{
+        path: '/tmp/omo.json',
+        level: 'project',
+        type: 'omo',
+        content: '',
+        data: {
+          agents: {
+            oracle: { model: 'anthropic/claude-opus-4' },
+          },
+        },
+      }],
+    };
+
+    const suggestions = engine.generate(configs);
+    const missing = suggestions.find((s) => s.targetType === 'missing-model');
+    expect(missing).toBeDefined();
+    expect(missing!.suggestedValue).toMatch(/^anthropic\//);
+  });
+
+  it('does not emit missing-model suggestions when all models are available', async () => {
+    const engine = await createEngine(
+      'anthropic/claude-sonnet-4\nopenai/gpt-4o'
+    );
+    const configs: ConfigState = {
+      opencode: [],
+      omo: [{
+        path: '/tmp/omo.json',
+        level: 'project',
+        type: 'omo',
+        content: '',
+        data: {
+          agents: {
+            sisyphus: { model: 'anthropic/claude-sonnet-4' },
+          },
+        },
+      }],
+    };
+
+    const suggestions = engine.generate(configs);
+    const missing = suggestions.filter((s) => s.targetType === 'missing-model');
+    expect(missing).toHaveLength(0);
+  });
+
+  it('handles empty available models gracefully', async () => {
+    const engine = await createEngine('');
+    const configs: ConfigState = {
+      opencode: [],
+      omo: [{
+        path: '/tmp/omo.json',
+        level: 'project',
+        type: 'omo',
+        content: '',
+        data: {
+          agents: {
+            sisyphus: { model: 'anthropic/claude-opus-4' },
+          },
+        },
+      }],
+    };
+
+    const suggestions = engine.generate(configs);
+    const missing = suggestions.filter((s) => s.targetType === 'missing-model');
+    expect(missing).toHaveLength(0);
+  });
+
+  it('detects missing opencode model and suggests replacement', async () => {
+    const engine = await createEngine(
+      'anthropic/claude-sonnet-4\nopenai/gpt-4o'
+    );
+    const configs: ConfigState = {
+      opencode: [{
+        path: '/tmp/opencode.json',
+        level: 'project',
+        type: 'opencode',
+        content: '',
+        data: {
+          model: 'openai/gpt-5',
+        },
+      }],
+      omo: [],
+    };
+
+    const suggestions = engine.generate(configs);
+    const missing = suggestions.find(
+      (s) => s.targetType === 'missing-model' && s.targetName === 'model'
+    );
+    expect(missing).toBeDefined();
+    expect(missing!.suggestedValue).toMatch(/^(anthropic|openai)\//);
+  });
 });

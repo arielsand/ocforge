@@ -54,4 +54,46 @@ describe('integration', () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it('end-to-end: detects stale model reference and produces enriched missing-model suggestion', async () => {
+    const tmp = join(tmpdir(), `ocforge-validate-${Date.now()}`);
+    const omoDir = join(tmp, '.opencode');
+    mkdirSync(omoDir, { recursive: true });
+
+    const omoPath = join(omoDir, 'oh-my-openagent.jsonc');
+    writeFileSync(omoPath, '{\n  "agents": {\n    "sisyphus": {\n      "model": "nonexistent/dead-model"\n    }\n  }\n}');
+
+    const configs = discoverConfigs({ cwd: tmp, globalDir: join(tmp, 'nonexistent-global') });
+    const omoFile = configs.omo.find((c) => c.path === omoPath);
+    expect(omoFile).toBeDefined();
+
+    const registry = new ModelRegistry({
+      shellRunner: async () => ({
+        stdout: 'anthropic/claude-sonnet-4\nopenai/gpt-4o',
+        stderr: '',
+        exitCode: 0,
+      }),
+    });
+    await registry.refresh();
+
+    const isolatedConfigs = { opencode: [], omo: [omoFile!] };
+    const engine = new SuggestionEngine(registry);
+    const suggestions = engine.generate(isolatedConfigs);
+
+    const missing = suggestions.find((s) => s.targetType === 'missing-model');
+    expect(missing).toBeDefined();
+    expect(missing!.currentValue).toBe('nonexistent/dead-model');
+    expect(missing!.suggestedValue).toMatch(/^(anthropic|openai)\//);
+    expect(missing!.targetName).toBe('sisyphus');
+
+    const omoData = omoFile!.data as import('../src/types').OmOConfig;
+    const enrichTargetName = missing!.targetName;
+    let jsonPath: (string | number)[] = [];
+    if (omoData?.agents?.[enrichTargetName]) {
+      jsonPath = ['agents', enrichTargetName, 'model'];
+    }
+    expect(jsonPath).toEqual(['agents', 'sisyphus', 'model']);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

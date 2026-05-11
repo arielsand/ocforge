@@ -87,7 +87,7 @@ export interface ConfigState {
 }
 
 export interface Suggestion {
-  targetType: 'agent' | 'category' | 'opencode-model' | 'opencode-small-model';
+  targetType: 'agent' | 'category' | 'opencode-model' | 'opencode-small-model' | 'missing-model';
   targetName: string;
   currentValue: string | undefined;
   suggestedValue: string;

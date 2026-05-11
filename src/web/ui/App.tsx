@@ -350,11 +350,27 @@ export default function App() {
       oldValue: c.oldValue,
       newValue: c.newValue,
     }));
-    await fetch('/api/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ changes }),
-    });
+    try {
+      const applyRes = await fetch('/api/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changes }),
+      });
+      if (!applyRes.ok) {
+        const errBody = await applyRes.text();
+        setError(`Failed to apply changes: ${errBody}`);
+        return;
+      }
+      const applyData = await applyRes.json();
+      if (applyData.verificationErrors && applyData.verificationErrors.length > 0) {
+        setError(`Verification issues: ${applyData.verificationErrors.join('; ')}`);
+      } else {
+        setError(null);
+      }
+    } catch (err) {
+      setError(`Apply failed: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     setPending([]);
     const res = await fetch('/api/configs');
     setConfigs(await res.json());
@@ -706,7 +722,7 @@ export default function App() {
                                   <button
                                     onClick={() => {
                                       const newFallbacks = fallbacks.filter((_, i) => i !== idx);
-                                      addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback remove`);
+                                      addChange(c.path, ['agents', name, 'fallback_models'], fallbacks, newFallbacks, `${name} fallback remove`);
                                     }}
                                     className="ml-1 text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
                                   >
@@ -723,7 +739,7 @@ export default function App() {
                               onChange={(e) => {
                                 if (e.target.value) {
                                   const newFallbacks = [...fallbacks, e.target.value];
-                                  addChange(c.path, ['agents', name, 'fallback_models'], JSON.stringify(fallbacks), JSON.stringify(newFallbacks), `${name} fallback`);
+                                  addChange(c.path, ['agents', name, 'fallback_models'], fallbacks, newFallbacks, `${name} fallback`);
                                 }
                               }}
                             >
@@ -823,7 +839,8 @@ export default function App() {
               <h2 className="text-lg font-semibold text-zinc-200">{c.path}</h2>
               <Badge className="bg-zinc-800 text-zinc-400 border-zinc-700">{c.level}</Badge>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Top-level model fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
               {['model', 'small_model'].map((field) => {
                 const modelPending = pending.find((p) => p.jsonPath.join('.') === field);
                 const currentValue = modelPending ? modelPending.newValue : (c.data[field] ?? '');
@@ -858,6 +875,47 @@ export default function App() {
                 );
               })}
             </div>
+            {/* Per-agent model overrides */}
+            {c.data.agent && Object.keys(c.data.agent).length > 0 && (
+              <div className="mb-8">
+                <SectionTitle icon={Zap} title="Agent Overrides" subtitle={`${Object.keys(c.data.agent).length} agents configured`} />
+                <div className="space-y-3">
+                  {Object.entries(c.data.agent).map(([agentName, agentCfg]: [string, any]) => {
+                    const agentPending = pending.find((p) => p.jsonPath.join('.') === `agent.${agentName}.model`);
+                    const currentModel = agentPending ? String(agentPending.newValue) : (agentCfg.model ?? '');
+                    const provider = currentModel ? String(currentModel).split('/')[0] : '';
+                    const tier = models.find((m) => m.id === currentModel)?.priceTier || '';
+
+                    return (
+                      <Card key={agentName}>
+                        <CardContent className="py-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-medium text-zinc-200">{agentName}</h3>
+                            <div className="flex items-center gap-1.5">
+                              {provider && <Badge className={getProviderBadge(provider)}>{provider}</Badge>}
+                              {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
+                            </div>
+                          </div>
+                          <Select
+                            value={currentModel}
+                            onChange={(e) => addChange(c.path, ['agent', agentName, 'model'], agentCfg.model ?? '', e.target.value, `Agent ${agentName} model`)}
+                          >
+                            <option value="">-- select model --</option>
+                            {modelsByProvider.map(([prov, ms]) => (
+                              <optgroup key={prov} label={prov}>
+                                {ms.map((m) => (
+                                  <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
+                                ))}
+                            </optgroup>
+                            ))}
+                          </Select>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
         ))}
 

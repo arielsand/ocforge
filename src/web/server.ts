@@ -241,8 +241,11 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     return { success: renamed };
   });
 
-  app.post('/api/apply', async (request) => {
+  app.post('/api/apply', async (request, reply) => {
     const { changes } = request.body as { changes: Change[] };
+    if (!changes || !Array.isArray(changes) || changes.length === 0) {
+      return reply.code(400).send({ success: false, error: 'No changes provided' });
+    }
     const writer = new JSONCWriter();
     const byFile = new Map<string, Change[]>();
     for (const c of changes) {
@@ -252,19 +255,27 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     }
     const modified: string[] = [];
     const verificationErrors: string[] = [];
-    for (const [path, fileChanges] of byFile) {
-      writer.applyChanges(path, fileChanges, true);
-      modified.push(path);
+    try {
+      for (const [path, fileChanges] of byFile) {
+        writer.applyChanges(path, fileChanges, true);
+        modified.push(path);
 
-      const verification = writer.verifyChanges(path, fileChanges);
-      if (!verification.verified) {
-        verificationErrors.push(...verification.mismatches);
+        const verification = writer.verifyChanges(path, fileChanges);
+        if (!verification.verified) {
+          verificationErrors.push(...verification.mismatches);
+        }
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({ success: false, error: message, modified: [] });
     }
 
     const reloadResult = await signalReload();
 
-    return { success: true, modified, verificationErrors, reload: reloadResult };
+    if (verificationErrors.length > 0) {
+      return { success: true, modified, verificationErrors, reload: reloadResult };
+    }
+    return { success: true, modified, verificationErrors: [], reload: reloadResult };
   });
 
   app.post('/api/reload', async () => {

@@ -17,7 +17,9 @@ export function discoverConfigs(options?: DiscoverOptions): ConfigState {
 
   const opencodePaths = [
     { path: join(globalDir, 'opencode.json'), level: 'global' as const },
+    { path: join(globalDir, 'opencode.jsonc'), level: 'global' as const },
     { path: join(baseDir, 'opencode.json'), level: 'project' as const },
+    { path: join(baseDir, 'opencode.jsonc'), level: 'project' as const },
   ];
 
   // OmO precedence within same directory: legacy oh-my-opencode wins over oh-my-openagent.
@@ -38,22 +40,24 @@ export function discoverConfigs(options?: DiscoverOptions): ConfigState {
       const content = readFileSync(path, 'utf-8');
       const data = parse(content) as OpenCodeConfig;
       state.opencode.push({ path, level, type: 'opencode', content, data });
+      break; // highest precedence per level
     }
   }
 
   // Deduplicate: keep only the highest-precedence file per level.
   // If both legacy and new-format exist, legacy wins (already first in path list).
-  for (const { path, level } of omoPaths) {
+  const globalOmoPaths = omoPaths.filter(p => p.level === 'global');
+  const projectOmoPaths = omoPaths.filter(p => p.level === 'project');
+
+  for (const { path, level } of globalOmoPaths) {
     if (existsSync(path)) {
       const content = readFileSync(path, 'utf-8');
       const data = parse(content) as OmOConfig;
       state.omo.push({ path, level, type: 'omo', content, data });
-      break; // Only keep highest-precedence file per level
+      break;
     }
   }
 
-  // Check project-level OmO configs (only if none found at global level was from same path)
-  const projectOmoPaths = omoPaths.filter(p => p.level === 'project');
   for (const { path, level } of projectOmoPaths) {
     if (existsSync(path) && !state.omo.some(f => f.path === path)) {
       const content = readFileSync(path, 'utf-8');

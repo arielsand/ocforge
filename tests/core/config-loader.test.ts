@@ -77,6 +77,50 @@ describe('config-loader', () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it('discovers opencode.jsonc when opencode.json is absent', () => {
+    const tmp = join(tmpdir(), `ocforge-test-${Date.now()}`);
+    mkdirSync(tmp, { recursive: true });
+
+    writeFileSync(join(tmp, 'opencode.jsonc'), '{\n  // comment\n  "model": "a/b"\n}');
+
+    const state = discoverConfigs({ cwd: tmp, globalDir: join(tmp, 'nonexistent-global') });
+    const ocFile = state.opencode.find((c) => c.path.includes('opencode.jsonc'));
+    expect(ocFile).toBeDefined();
+    expect(ocFile!.data.model).toBe('a/b');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('deduplicates opencode.json over opencode.jsonc per level', () => {
+    const tmp = join(tmpdir(), `ocforge-test-${Date.now()}`);
+    mkdirSync(tmp, { recursive: true });
+
+    writeFileSync(join(tmp, 'opencode.json'), JSON.stringify({ model: 'from/json' }));
+    writeFileSync(join(tmp, 'opencode.jsonc'), JSON.stringify({ model: 'from/jsonc' }));
+
+    const state = discoverConfigs({ cwd: tmp, globalDir: join(tmp, 'nonexistent-global') });
+    expect(state.opencode.length).toBe(1);
+    expect(state.opencode[0].data.model).toBe('from/json');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('deduplicates OmO project-level to a single file even with legacy + new format', () => {
+    const tmp = join(tmpdir(), `ocforge-test-${Date.now()}`);
+    const opencodeDir = join(tmp, '.opencode');
+    mkdirSync(opencodeDir, { recursive: true });
+
+    writeFileSync(join(opencodeDir, 'oh-my-opencode.json'), '{"agents":{"x":{"model":"legacy/d"}}}');
+    writeFileSync(join(opencodeDir, 'oh-my-openagent.json'), '{"agents":{"x":{"model":"new/d"}}}');
+
+    const state = discoverConfigs({ cwd: tmp, globalDir: join(tmp, 'nonexistent-global') });
+    const projectOmo = state.omo.filter((c) => c.level === 'project');
+    expect(projectOmo.length).toBe(1);
+    expect((projectOmo[0].data as any).agents.x.model).toBe('legacy/d');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });
 
 describe('discoverModelOwners', () => {

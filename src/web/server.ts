@@ -28,7 +28,7 @@ function findPkgRoot(): string {
   }
   return process.cwd();
 }
-import type { Change } from '../types';
+import type { Change, OmOConfig, OpenCodeConfig } from '../types';
 
 let cachedModels: ReturnType<ModelRegistry['list']> | null = null;
 let cacheTimestamp = 0;
@@ -67,6 +67,60 @@ export async function startWebServer(port: number = 3456, cwd?: string): Promise
     registry.seed(models);
     const engine = new SuggestionEngine(registry);
     return engine.generate(configs);
+  });
+
+  app.get('/api/validate', async () => {
+    const configs = discoverConfigs({ cwd });
+    const models = await getModels();
+    const registry = new ModelRegistry({ shellRunner: async () => ({ stdout: '', stderr: '', exitCode: 0 }) });
+    registry.seed(models);
+    const engine = new SuggestionEngine(registry);
+    const allSuggestions = engine.generate(configs);
+
+    const missingModels = allSuggestions
+      .filter((s) => s.targetType === 'missing-model')
+      .map((s) => {
+        let configPath = '';
+        let jsonPath: (string | number)[] = [];
+        let display = '';
+
+        const omoConfig = configs.omo[0];
+        const ocConfig = configs.opencode[0];
+        const omoData = omoConfig?.data as OmOConfig | undefined;
+        const ocData = ocConfig?.data as OpenCodeConfig | undefined;
+
+        if (s.targetName === 'model' || s.targetName === 'small_model') {
+          configPath = ocConfig?.path || '';
+          jsonPath = [s.targetName];
+          display = `OpenCode ${s.targetName} (missing)`;
+        } else if (omoData?.agents?.[s.targetName]) {
+          configPath = omoConfig!.path;
+          jsonPath = ['agents', s.targetName, 'model'];
+          display = `${s.targetName} agent (missing)`;
+        } else if (omoData?.categories?.[s.targetName]) {
+          configPath = omoConfig!.path;
+          jsonPath = ['categories', s.targetName, 'model'];
+          display = `${s.targetName} category (missing)`;
+        } else if (ocData?.agent?.[s.targetName]) {
+          configPath = ocConfig!.path;
+          jsonPath = ['agent', s.targetName, 'model'];
+          display = `${s.targetName} agent (missing)`;
+        }
+
+        return {
+          targetType: s.targetType,
+          targetName: s.targetName,
+          currentValue: s.currentValue,
+          suggestedValue: s.suggestedValue,
+          reason: s.reason,
+          confidence: s.confidence,
+          configPath,
+          jsonPath,
+          display,
+        };
+      });
+
+    return { valid: missingModels.length === 0, missingModels };
   });
 
   app.post('/api/preview', async (request) => {

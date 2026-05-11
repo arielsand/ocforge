@@ -200,6 +200,30 @@ function Select({ value, onChange, children, className }: {
   );
 }
 
+function ModelSelect({ value, onChange, modelsByProvider, placeholder = '-- select model --' }: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  modelsByProvider: [string, ModelView[]][];
+  placeholder?: string;
+}) {
+  const hasValueInModels = value && modelsByProvider.some(([, ms]) => ms.some((m) => m.id === value));
+  return (
+    <Select value={value} onChange={onChange}>
+      <option value="">{placeholder}</option>
+      {!hasValueInModels && value && (
+        <option value={value}>{value} (current config)</option>
+      )}
+      {modelsByProvider.map(([prov, ms]) => (
+        <optgroup key={prov} label={prov}>
+          {ms.map((m) => (
+            <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
+          ))}
+        </optgroup>
+      ))}
+    </Select>
+  );
+}
+
 function Alert({ type, children }: { type: 'info' | 'success' | 'warning' | 'error'; children: React.ReactNode }) {
   const styles = {
     info: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
@@ -659,19 +683,11 @@ export default function App() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3">
                               <div className="flex-1 min-w-0">
-                                <Select
+                                <ModelSelect
                                   value={String(currentValue)}
                                   onChange={(e) => addChange(c.path, ['agents', name, 'model'], cfg.model ?? '', e.target.value, `${name} model`)}
-                                >
-                                  <option value="">-- select model --</option>
-                                  {modelsByProvider.map(([prov, ms]) => (
-                                    <optgroup key={prov} label={prov}>
-                                      {ms.map((m) => (
-                                        <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </Select>
+                                  modelsByProvider={modelsByProvider}
+                                />
                               </div>
                               <Button
                                 variant="secondary"
@@ -734,7 +750,7 @@ export default function App() {
                           )}
                           <div className="flex items-center gap-2 max-w-xs">
                             <Plus className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            <Select
+                            <ModelSelect
                               value=""
                               onChange={(e) => {
                                 if (e.target.value) {
@@ -742,16 +758,9 @@ export default function App() {
                                   addChange(c.path, ['agents', name, 'fallback_models'], fallbacks, newFallbacks, `${name} fallback`);
                                 }
                               }}
-                            >
-                              <option value="">-- add fallback model --</option>
-                              {modelsByProvider.map(([prov, ms]) => (
-                                <optgroup key={prov} label={prov}>
-                                  {ms.map((m) => (
-                                    <option key={m.id} value={m.id}>{m.id}</option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </Select>
+                              modelsByProvider={modelsByProvider}
+                              placeholder="-- add fallback model --"
+                            />
                           </div>
                         </div>
                       </div>
@@ -798,19 +807,11 @@ export default function App() {
                             {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
                           </div>
                         </div>
-                        <Select
+                        <ModelSelect
                           value={String(currentValue)}
                           onChange={(e) => addChange(c.path, ['categories', name, 'model'], cfg.model ?? '', e.target.value, `${name} category`)}
-                        >
-                          <option value="">-- select model --</option>
-                          {modelsByProvider.map(([prov, ms]) => (
-                            <optgroup key={prov} label={prov}>
-                              {ms.map((m) => (
-                                <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </Select>
+                          modelsByProvider={modelsByProvider}
+                        />
 
                         {suggestion && (
                           <div className="mt-3 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
@@ -857,59 +858,127 @@ export default function App() {
                           {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
                         </div>
                       </div>
-                      <Select
+                      <ModelSelect
                         value={String(currentValue)}
                         onChange={(e) => addChange(c.path, [field], c.data[field] ?? '', e.target.value, `OpenCode ${field}`)}
-                      >
-                        <option value="">-- select model --</option>
-                        {modelsByProvider.map(([prov, ms]) => (
-                          <optgroup key={prov} label={prov}>
-                            {ms.map((m) => (
-                              <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </Select>
+                        modelsByProvider={modelsByProvider}
+                      />
                     </CardContent>
                   </Card>
                 );
               })}
             </div>
-            {/* Per-agent model overrides */}
+            {/* OpenCode Agents */}
             {c.data.agent && Object.keys(c.data.agent).length > 0 && (
-              <div className="mb-8">
-                <SectionTitle icon={Zap} title="Agent Overrides" subtitle={`${Object.keys(c.data.agent).length} agents configured`} />
+              <div className="mt-8">
+                <SectionTitle icon={Zap} title="Agents" subtitle={`${Object.keys(c.data.agent).length} configured in OpenCode`} />
                 <div className="space-y-3">
-                  {Object.entries(c.data.agent).map(([agentName, agentCfg]: [string, any]) => {
-                    const agentPending = pending.find((p) => p.jsonPath.join('.') === `agent.${agentName}.model`);
-                    const currentModel = agentPending ? String(agentPending.newValue) : (agentCfg.model ?? '');
-                    const provider = currentModel ? String(currentModel).split('/')[0] : '';
-                    const tier = models.find((m) => m.id === currentModel)?.priceTier || '';
+                  {Object.entries(c.data.agent as Record<string, any>).map(([name, cfg]) => {
+                    const fallbacks: string[] = (cfg.fallback_models || []).map((f: any) => typeof f === 'string' ? f : f.model);
+                    const modelPending = pending.find((p) => p.jsonPath.join('.') === `agent.${name}.model`);
+                    const currentValue = modelPending ? modelPending.newValue : (cfg.model ?? '');
+                    const provider = String(currentValue).split('/')[0] || '';
+                    const tier = models.find((m) => m.id === currentValue)?.priceTier || '';
+                    const suggestion = suggestionResult[name];
 
                     return (
-                      <Card key={agentName}>
-                        <CardContent className="py-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="font-medium text-zinc-200">{agentName}</h3>
-                            <div className="flex items-center gap-1.5">
-                              {provider && <Badge className={getProviderBadge(provider)}>{provider}</Badge>}
-                              {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
+                      <Card key={name}>
+                        <div className="p-5">
+                          <div className="flex items-start gap-4">
+                            <div className="w-64 shrink-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-zinc-100">{name}</h3>
+                                {fallbacks.length > 0 && (
+                                  <Badge className="bg-zinc-800 text-zinc-500 border-zinc-700">
+                                    <GitBranch className="w-3 h-3" />
+                                    {fallbacks.length}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{getAgentRoleDescription(name)}</p>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <ModelSelect
+                                    value={String(currentValue)}
+                                    onChange={(e) => addChange(c.path, ['agent', name, 'model'], cfg.model ?? '', e.target.value, `${name} model`)}
+                                    modelsByProvider={modelsByProvider}
+                                  />
+                                </div>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => aiSuggest(name, c.path, cfg.model ?? '')}
+                                  disabled={suggestingFor === name || !ollamaAvailable || !selectedOllamaModel}
+                                >
+                                  {suggestingFor === name ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-4 h-4" />
+                                  )}
+                                  AI
+                                </Button>
+                              </div>
+                              {provider && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Badge className={getProviderBadge(provider)}>{provider}</Badge>
+                                  {tier && <Badge className={getTierBadge(tier)}>{tier}</Badge>}
+                                </div>
+                              )}
+                              {suggestion && (
+                                <div className="mt-3 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Brain className="w-4 h-4 text-indigo-400" />
+                                    <span className="text-indigo-300 font-medium">{suggestion.suggestedValue}</span>
+                                    <span className="text-zinc-500">({Math.round(suggestion.confidence * 100)}%)</span>
+                                  </div>
+                                  <p className="text-xs text-zinc-500 mt-1">{suggestion.reason}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <Select
-                            value={currentModel}
-                            onChange={(e) => addChange(c.path, ['agent', agentName, 'model'], agentCfg.model ?? '', e.target.value, `Agent ${agentName} model`)}
-                          >
-                            <option value="">-- select model --</option>
-                            {modelsByProvider.map(([prov, ms]) => (
-                              <optgroup key={prov} label={prov}>
-                                {ms.map((m) => (
-                                  <option key={m.id} value={m.id}>{m.id} ({m.priceTier})</option>
+
+                          {/* Fallbacks */}
+                          <div className="mt-4 pt-4 border-t border-zinc-800">
+                            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Fallback Models</p>
+                            {fallbacks.length === 0 ? (
+                              <p className="text-sm text-zinc-600">No fallbacks configured</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {fallbacks.map((fb, idx) => (
+                                  <Badge key={idx} className="bg-zinc-800 text-zinc-400 border-zinc-700">
+                                    <GitBranch className="w-3 h-3" />
+                                    {fb}
+                                    <button
+                                      onClick={() => {
+                                        const newFallbacks = fallbacks.filter((_, i) => i !== idx);
+                                        addChange(c.path, ['agent', name, 'fallback_models'], fallbacks, newFallbacks, `${name} fallback remove`);
+                                      }}
+                                      className="ml-1 text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </Badge>
                                 ))}
-                            </optgroup>
-                            ))}
-                          </Select>
-                        </CardContent>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 max-w-xs">
+                              <Plus className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              <ModelSelect
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    const newFallbacks = [...fallbacks, e.target.value];
+                                    addChange(c.path, ['agent', name, 'fallback_models'], fallbacks, newFallbacks, `${name} fallback`);
+                                  }
+                                }}
+                                modelsByProvider={modelsByProvider}
+                                placeholder="-- add fallback model --"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </Card>
                     );
                   })}
